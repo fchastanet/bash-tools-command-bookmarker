@@ -105,16 +105,17 @@ func (p *Prompt) HandleKey(msg tea.KeyMsg) (closePrompt bool, cmd tea.Cmd) {
 }
 
 // HandleBlink handles the bubbletea blink message.
-func (p *Prompt) HandleBlink(msg tea.Msg) (cmd tea.Cmd) {
+func (p *Prompt) HandleBlink(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		// Ignore key presses, they're handled by HandleKey above.
 	default:
 		// The blink message type is unexported so we just send unknown types to
 		// the model.
-		p.model, cmd = p.model.Update(msg)
+		_, cmd = p.model.Update(msg)
 	}
-	return
+	return cmd
 }
 
 func (p *Prompt) View(width int) string {

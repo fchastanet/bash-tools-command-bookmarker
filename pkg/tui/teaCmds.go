@@ -104,3 +104,38 @@ func GetDummyCmd() tea.Cmd {
 		return DummyMsg{}
 	}
 }
+
+type PropagationFilter string
+
+const (
+	PropagationStopped           PropagationFilter = "PropagationStopped"
+	PropagationToAllChildren     PropagationFilter = "PropagationToAllChildren"
+	PropagationToFocusedChildren PropagationFilter = "PropagationToFocusedChildren"
+)
+
+type PropagationMsg struct {
+	Msg               tea.Msg
+	PropagationFilter PropagationFilter
+}
+
+type PropagationMsgInterface interface {
+	GetPropagationFilter() PropagationFilter
+	GetMsg() tea.Msg
+	ShouldPropagate() bool
+}
+
+func (p *PropagationMsg) GetPropagationFilter() PropagationFilter {
+	return p.PropagationFilter
+}
+
+func (p *PropagationMsg) GetMsg() tea.Msg {
+	return p.Msg
+}
+
+func (p *PropagationMsg) String() string {
+	return fmt.Sprintf("PropagationMsg{PropagationFilter: %s, Msg: %v}", p.PropagationFilter, p.Msg)
+}
+
+func (p *PropagationMsg) ShouldPropagate() bool {
+	return p.PropagationFilter != PropagationStopped
+}
