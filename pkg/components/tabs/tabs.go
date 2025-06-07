@@ -136,14 +136,15 @@ func (t *Tabs) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (t *Tabs) updateActiveTab(msg tea.KeyMsg) {
 	oldActiveTab := t.activeTab
+	keys := t.settings.Keys
 	switch {
-	case key.Matches(msg, *t.settings.Keys.Right):
+	case key.Matches(msg, *keys.Right) && keys.Right.Enabled():
 		if t.activeTab == len(t.Tabs)-1 {
 			t.activeTab = 0
 		} else {
 			t.activeTab = min(t.activeTab+1, len(t.Tabs)-1)
 		}
-	case key.Matches(msg, *t.settings.Keys.Left):
+	case key.Matches(msg, *keys.Left) && keys.Left.Enabled():
 		if t.activeTab == 0 {
 			t.activeTab = len(t.Tabs) - 1
 		} else {

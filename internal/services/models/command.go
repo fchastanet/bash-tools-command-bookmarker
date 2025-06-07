@@ -11,12 +11,10 @@ import (
 type CommandStatus string
 
 const (
-	CommandStatusImported   CommandStatus = "IMPORTED"
-	CommandStatusSaved      CommandStatus = "SAVED"
-	CommandStatusDeleted    CommandStatus = "DELETED"
-	CommandStatusObsolete   CommandStatus = "OBSOLETE"
-	CommandStatusBookmarked CommandStatus = "BOOKMARKED"
-	CommandStatusArchived   CommandStatus = "ARCHIVED"
+	CommandStatusImported CommandStatus = "IMPORTED"
+	CommandStatusSaved    CommandStatus = "SAVED"
+	CommandStatusDeleted  CommandStatus = "DELETED"
+	CommandStatusObsolete CommandStatus = "OBSOLETE"
 )
 
 type Command struct {
@@ -68,6 +66,11 @@ func NewCommand(
 		CreationDatetime:     timestamp,
 		ModificationDatetime: time.Now(),
 	}
+}
+
+func (c *Command) IsEditable() bool {
+	return c.Status == CommandStatusImported ||
+		c.Status == CommandStatusSaved
 }
 
 // getLintIssues parses the JSON lint issues and returns them as structured data

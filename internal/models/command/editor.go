@@ -91,7 +91,7 @@ type commandEditor struct {
 }
 
 func (m *commandEditor) BeforeSwitchPane() tea.Cmd {
-	return m.confirmAbandonChanges()
+	return m.confirmAbandonChanges(false)
 }
 
 func (m *commandEditor) getCommand(commandID resource.ID) (*dbmodels.Command, error) {
@@ -241,26 +241,27 @@ func (m *commandEditor) handleFocusedPaneChangedMsg(msg structure.FocusedPaneCha
 
 func (m *commandEditor) initInputs() {
 	for i, input := range m.inputs {
-		input.SetReadOnly(m.focused != i)
+		input.SetReadOnly(m.focused != i || !m.command.IsEditable())
 	}
 }
 
+//nolint:cyclop // not really complex
 func (m *commandEditor) handleKeyMsg(msg tea.KeyMsg) tea.Cmd {
 	var cmds []tea.Cmd
-
+	editorK := m.EditorKeyMap
 	switch {
-	case key.Matches(msg, *m.EditorKeyMap.PreviousField):
+	case key.Matches(msg, *editorK.PreviousField) && editorK.PreviousField.Enabled():
 		cmds = append(cmds, m.prevField())
-	case key.Matches(msg, *m.EditorKeyMap.NextField):
+	case key.Matches(msg, *editorK.NextField) && editorK.NextField.Enabled():
 		cmds = append(cmds, m.nextField())
-	case key.Matches(msg, *m.EditorKeyMap.PreviousPage):
+	case key.Matches(msg, *editorK.PreviousPage) && editorK.PreviousPage.Enabled():
 		m.prevPage()
-	case key.Matches(msg, *m.EditorKeyMap.NextPage):
+	case key.Matches(msg, *editorK.NextPage) && editorK.NextPage.Enabled():
 		m.nextPage()
-	case key.Matches(msg, *m.EditorKeyMap.Save):
+	case key.Matches(msg, *editorK.Save) && editorK.Save.Enabled():
 		return m.save()
-	case key.Matches(msg, *m.EditorKeyMap.Cancel):
-		return m.confirmAbandonChanges()
+	case key.Matches(msg, *editorK.Cancel) && editorK.Cancel.Enabled():
+		return m.confirmAbandonChanges(true)
 	}
 
 	return tea.Batch(cmds...)
@@ -299,18 +300,19 @@ func (m *commandEditor) View() string {
 
 // addCommonElements adds the title, help text, and input fields to the content
 func (m *commandEditor) addCommonElements(content *strings.Builder) {
-	title := m.styles.EditorStyle.Title.Render("Command Editor")
-
 	// Add help text at the top
 	helpTextStyle := *m.styles.EditorStyle.HelpText
 	if m.focused == -1 {
 		helpTextStyle = helpTextStyle.Bold(true).Foreground(lipgloss.Color("255"))
 	}
-	helpText := helpTextStyle.Render("⭾/Shift-⭾: Fields • ⇞/⇟: Scroll • Ctrl+S: Save • Esc: Cancel")
-	content.WriteString(helpText)
-
-	// Add the title
-	content.WriteString(title + "\n\n")
+	var helpText string
+	if m.command.IsEditable() {
+		helpText = helpTextStyle.Render("⭾/Shift-⭾: Fields • ⇞/⇟: Scroll • Ctrl+S: Save • Esc: Cancel")
+	} else {
+		helpText = m.styles.EditorStyle.StatusWarning.Render("Command is read-only") +
+			"         " + helpTextStyle.Render("⭾/Shift-⭾: Fields • ⇞/⇟: Scroll • Esc: Close")
+	}
+	content.WriteString(helpText + "\n\n")
 
 	// Labels for our fields
 	labels := []string{"Title:", "Description(markdown):", "Script:"}
@@ -422,9 +424,14 @@ func (m *commandEditor) generateScrollbar(contentStr, visibleContent string) str
 	)
 }
 
-func (m *commandEditor) confirmAbandonChanges() tea.Cmd {
+func (m *commandEditor) confirmAbandonChanges(cancel bool) tea.Cmd {
 	// If no changes are made, just return
 	if !m.EditionInProgress() {
+		if cancel {
+			return tea.Cmd(func() tea.Msg {
+				return EditorCancelledMsg{}
+			})
+		}
 		return nil
 	}
 
@@ -446,7 +453,7 @@ func (m *commandEditor) nextField() tea.Cmd {
 	if m.focused == len(m.inputs)-1 {
 		m.focused = -1
 		m.initInputs()
-		return m.confirmAbandonChanges()
+		return m.confirmAbandonChanges(false)
 	}
 
 	m.focused = (m.focused + 1) % len(m.inputs)
@@ -464,7 +471,7 @@ func (m *commandEditor) prevField() tea.Cmd {
 	case -1:
 		m.focused = len(m.inputs) - 1
 		m.initInputs()
-		return m.confirmAbandonChanges()
+		return m.confirmAbandonChanges(false)
 	case 0:
 		m.focused = -1
 	default:

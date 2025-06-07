@@ -43,14 +43,11 @@ func setupTest() Model[*testResource] {
 	cellRenderer := func(_ *testResource, cellContent string, _ int, _ bool) string {
 		return cellContent
 	}
-	matchFilterCallback := func(_ string, item *testResource) bool {
-		return item.n == 0
-	}
 	editorCache := &Cache{}
 	tbl := New(
 		editorCache,
 		GetDefaultStyle(tui.GetDefaultScrollbarStyle()), nil,
-		renderer, cellRenderer, matchFilterCallback, 0, 0,
+		renderer, cellRenderer, 0, 0,
 		WithSortFunc(func(i, j *testResource) int {
 			if i.n < j.n {
 				return -1

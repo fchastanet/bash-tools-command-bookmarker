@@ -228,17 +228,20 @@ func (p *PaneManager) handleKeyEvent(keyMsg tea.KeyMsg) tea.Cmd {
 }
 
 // handleNavigationKeys handles key bindings for navigating between panes
+//
+//nolint:cyclop // not really complex
 func (p *PaneManager) handleNavigationKeys(keyMsg tea.KeyMsg) tea.Cmd {
+	paneK := p.paneKeyMap
 	switch {
-	case key.Matches(keyMsg, *p.paneKeyMap.SwitchBottomPane):
+	case key.Matches(keyMsg, *paneK.SwitchBottomPane) && paneK.SwitchBottomPane.Enabled():
 		return p.handleSwitchPane(false)
-	case key.Matches(keyMsg, *p.paneKeyMap.SwitchPaneBack):
+	case key.Matches(keyMsg, *paneK.SwitchPaneBack) && paneK.SwitchPaneBack.Enabled():
 		return p.handleSwitchPane(true)
-	case key.Matches(keyMsg, *p.paneKeyMap.LeftPane):
+	case key.Matches(keyMsg, *paneK.LeftPane) && paneK.LeftPane.Enabled():
 		return p.handleFocusPane(structure.LeftPane)
-	case key.Matches(keyMsg, *p.paneKeyMap.TopPane):
+	case key.Matches(keyMsg, *paneK.TopPane) && paneK.TopPane.Enabled():
 		return p.handleFocusPane(structure.TopPane)
-	case key.Matches(keyMsg, *p.paneKeyMap.BottomPane):
+	case key.Matches(keyMsg, *paneK.BottomPane) && paneK.BottomPane.Enabled():
 		return p.handleFocusPane(structure.BottomPane)
 	default:
 		return nil
@@ -247,14 +250,15 @@ func (p *PaneManager) handleNavigationKeys(keyMsg tea.KeyMsg) tea.Cmd {
 
 // handleResizeKeys handles key bindings for resizing panes
 func (p *PaneManager) handleResizeKeys(keyMsg tea.KeyMsg) tea.Cmd {
+	pk := p.paneKeyMap
 	switch {
-	case key.Matches(keyMsg, *p.paneKeyMap.ShrinkPaneWidth):
+	case key.Matches(keyMsg, *pk.ShrinkPaneWidth) && pk.ShrinkPaneWidth.Enabled():
 		return p.handleShrinkPaneWidth()
-	case key.Matches(keyMsg, *p.paneKeyMap.GrowPaneWidth):
+	case key.Matches(keyMsg, *pk.GrowPaneWidth) && pk.GrowPaneWidth.Enabled():
 		return p.handleGrowPaneWidth()
-	case key.Matches(keyMsg, *p.paneKeyMap.ShrinkPaneHeight):
+	case key.Matches(keyMsg, *pk.ShrinkPaneHeight) && pk.ShrinkPaneHeight.Enabled():
 		return p.handleShrinkPaneHeight()
-	case key.Matches(keyMsg, *p.paneKeyMap.GrowPaneHeight):
+	case key.Matches(keyMsg, *pk.GrowPaneHeight) && pk.GrowPaneHeight.Enabled():
 		return p.handleGrowPaneHeight()
 	default:
 		return nil

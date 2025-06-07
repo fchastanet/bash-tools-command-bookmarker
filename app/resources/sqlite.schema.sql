@@ -21,7 +21,7 @@ CREATE TABLE command (
     lint_issues TEXT,
     lint_status TEXT NOT NULL CHECK(lint_status IN ('NOT_AVAILABLE', 'OK', 'WARNING', 'ERROR', 'SHELLCHECK_FAILED')),
     elapsed INTEGER,
-    status TEXT NOT NULL CHECK(status IN ('IMPORTED', 'SAVED', 'DELETED', 'OBSOLETE', 'BOOKMARKED', 'ARCHIVED')),
+    status TEXT NOT NULL CHECK(status IN ('IMPORTED', 'SAVED', 'DELETED', 'OBSOLETE', 'BOOKMARKED')),
     folder_id INTEGER,
     FOREIGN KEY (folder_id) REFERENCES folder(id) ON DELETE CASCADE
 );

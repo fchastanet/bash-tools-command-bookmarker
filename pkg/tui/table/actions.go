@@ -7,7 +7,6 @@ type Action struct {
 	SelectAll   *key.Binding
 	SelectClear *key.Binding
 	SelectRange *key.Binding
-	Filter      *key.Binding
 	Reload      *key.Binding
 	Enter       *key.Binding
 	Delete      *key.Binding
@@ -30,10 +29,6 @@ func GetDefaultAction() *Action {
 		key.WithKeys(`ctrl+@`),
 		key.WithHelp(`Ctrl+<space>`, "select range"),
 	)
-	filter := key.NewBinding(
-		key.WithKeys("/"),
-		key.WithHelp(`/`, "filter"),
-	)
 	reload := key.NewBinding(
 		key.WithKeys("ctrl+r", "f5"),
 		key.WithHelp("F5/Ctrl+r", "reload"),
@@ -52,7 +47,6 @@ func GetDefaultAction() *Action {
 		SelectAll:   &selectAll,
 		SelectClear: &selectClear,
 		SelectRange: &selectRange,
-		Filter:      &filter,
 		Reload:      &reload,
 		Enter:       &enter,
 		Delete:      &deleteKey,

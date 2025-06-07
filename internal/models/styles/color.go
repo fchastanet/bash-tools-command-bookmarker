@@ -27,6 +27,7 @@ type ColorTheme struct {
 	GroupReportBackgroundColor lipgloss.Color
 	TaskSummaryBackgroundColor lipgloss.Color
 	ScrollPercentageBackground lipgloss.AdaptiveColor
+	PrimaryColor               lipgloss.Color
 }
 
 // NewDefaultColorTheme returns a new color theme with default colors
@@ -84,5 +85,7 @@ func NewDefaultColorTheme() *ColorTheme {
 			Dark:  "238",
 			Light: "250",
 		},
+
+		PrimaryColor: colors.Blue,
 	}
 }

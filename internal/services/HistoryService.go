@@ -28,6 +28,22 @@ type HistoryIngestor interface {
 	) error
 }
 
+// CommandCategory defines the categories of commands shown in the UI
+type CommandCategory string
+
+const (
+	// CommandCategoryAvailable represents commands that are available for use
+	CommandCategoryAvailable CommandCategory = "available"
+	// CommandCategoryBookmarked represents commands that have been saved
+	CommandCategorySaved CommandCategory = "saved"
+	// CommandCategoryNew represents commands that have been imported but not yet saved
+	CommandCategoryNew CommandCategory = "new"
+	// CommandCategoryDeleted represents commands that have been marked as deleted
+	CommandCategoryDeleted CommandCategory = "deleted"
+	// CommandCategoryAll represents all commands regardless of status
+	CommandCategoryAll CommandCategory = "all"
+)
+
 type HistoryService struct {
 	ingestor          HistoryIngestor
 	homeDir           string
@@ -52,19 +68,26 @@ func NewHistoryService(
 	}
 }
 
-func (s *HistoryService) GetHistoryRows() ([]*models.Command, error) {
-	// Only fetch commands with the statuses we want to display
-	cmds, err := s.dbService.GetCommands(
-		models.CommandStatusImported,
-		models.CommandStatusSaved,
-		models.CommandStatusBookmarked,
-	)
+// GetCommandsByStatus returns commands filtered by specific status types
+func (s *HistoryService) GetCommandsByStatus(statuses ...models.CommandStatus) ([]*models.Command, error) {
+	cmds, err := s.dbService.GetCommands(statuses...)
 	if err != nil {
-		slog.Error("Error getting history rows", "error", err)
+		slog.Error("Error getting commands by status", "statuses", statuses, "error", err)
 		return []*models.Command{}, err
 	}
 
 	return cmds, nil
+}
+
+// GetCommandCountsByStatus returns a map of counts for each command status
+func (s *HistoryService) GetCommandCountsByStatus() (map[models.CommandStatus]int, error) {
+	counts, err := s.dbService.GetCommandCountsByStatus()
+	if err != nil {
+		slog.Error("Error getting command counts by status", "error", err)
+		return nil, err
+	}
+
+	return counts, nil
 }
 
 func (s *HistoryService) getScriptRegexp() *regexp.Regexp {
@@ -265,6 +288,23 @@ func matchOneOfRegexp(line string, regexps []*regexp.Regexp) bool {
 	return false
 }
 
+func (s *HistoryService) RestoreCommand(commands []*models.Command) error {
+	if len(commands) < 1 {
+		return &ComposeInsufficientCommandsProvidedError{nil}
+	}
+	for _, cmd := range commands {
+		cmd.Status = models.CommandStatusSaved
+		cmd.ModificationDatetime = time.Now()
+		s.lintService.LintCommand(cmd)
+		err := s.dbService.UpdateCommand(cmd)
+		if err != nil {
+			slog.Error("Error restoring command", "id", cmd.ID, "error", err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *HistoryService) ComposeCommand(commands []*models.Command) (*models.Command, error) {
 	if len(commands) < 1 {
 		return nil, &ComposeInsufficientCommandsProvidedError{nil}
@@ -301,4 +341,38 @@ func (s *HistoryService) CreateCommandsString(commands []*models.Command) string
 		}
 	}
 	return script.String()
+}
+
+// GetCommandCountsByCategory returns a map of command counts by category
+func (s *HistoryService) GetCommandCountsByCategory() (map[CommandCategory]int, error) {
+	// Get the raw counts by status
+	statusCounts, err := s.dbService.GetCommandCountsByStatus()
+	if err != nil {
+		slog.Error("Error getting command counts by status", "error", err)
+		return nil, err
+	}
+
+	// Map database status counts to category counts
+	categoryCounts := make(map[CommandCategory]int)
+
+	// Available commands (showing Imported status)
+	categoryCounts[CommandCategoryAvailable] = statusCounts[models.CommandStatusImported] +
+		statusCounts[models.CommandStatusSaved]
+
+	// Saved commands (showing Saved status)
+	categoryCounts[CommandCategorySaved] = statusCounts[models.CommandStatusSaved]
+
+	// New commands (showing Imported status)
+	categoryCounts[CommandCategoryNew] = statusCounts[models.CommandStatusImported]
+
+	// Deleted commands
+	categoryCounts[CommandCategoryDeleted] = statusCounts[models.CommandStatusDeleted]
+
+	// All commands (sum of all statuses)
+	categoryCounts[CommandCategoryAll] = 0
+	for _, count := range statusCounts {
+		categoryCounts[CommandCategoryAll] += count
+	}
+
+	return categoryCounts, nil
 }

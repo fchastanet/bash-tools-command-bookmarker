@@ -1,10 +1,4 @@
-# GitHub Copilot Instructions
-
-On chat, only provide the relevant changes but not all the files.
-
-In agent mode, always edit the files.
-
-## Commit Message
+# Commit Message
 
 Commit message should be in markdown format.
 
@@ -23,7 +17,3 @@ When generating commit messages:
 - Mention file names when appropriate
 - Explain the "why" behind significant changes
 - Reference issue numbers with #123 format if applicable
-
-## GitHub Workflow
-
-For github workflow split lines longer than 120 characters.

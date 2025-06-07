@@ -1,6 +1,9 @@
 package services
 
-import "github.com/fchastanet/shell-command-bookmarker/internal/args"
+import (
+	"github.com/fchastanet/shell-command-bookmarker/internal/args"
+	"github.com/fchastanet/shell-command-bookmarker/internal/services/models"
+)
 
 type CommandExecutorInterface interface {
 	// ExecuteCommandWithStdin executes a command with stdin and returns the output and error if any.
@@ -23,4 +26,18 @@ type AppServiceInterface interface {
 	GetHistoryService() *HistoryService
 	HandleShellIntegrationScriptGeneration(cli *args.Cli) bool
 	Self() *AppService
+}
+
+// HistoryServiceInterface defines the expected behavior of a HistoryService
+type HistoryServiceInterface interface {
+	GetCommandsByStatus(statuses ...models.CommandStatus) ([]*models.Command, error)
+	GetCommandCountsByStatus() (map[models.CommandStatus]int, error)
+	GetCommandCountsByCategory() (map[CommandCategory]int, error)
+	GetCommandStatusesByCategory(category CommandCategory) []models.CommandStatus
+	GetCommandCategoryTitles() map[CommandCategory]string
+	GetAllCommandCategories() []CommandCategory
+	IngestHistory() error
+	UpdateCommand(command *models.Command) (*models.Command, error)
+	ComposeCommand(commands []*models.Command) (*models.Command, error)
+	CreateCommandsString(commands []*models.Command) string
 }

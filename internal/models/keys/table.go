@@ -2,6 +2,7 @@ package keys
 
 import (
 	"github.com/charmbracelet/bubbles/key"
+	dbmodels "github.com/fchastanet/shell-command-bookmarker/internal/services/models"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/tui/table"
 )
 
@@ -9,14 +10,14 @@ type TableCustomActionKeyMap struct {
 	ComposeCommand  *key.Binding
 	CopyToClipboard *key.Binding
 	SelectForShell  *key.Binding
+	RestoreCommand  *key.Binding
 }
 
-func GetTableCustomActionKeyMap(shellSelectionMode bool) *TableCustomActionKeyMap {
+func GetTableCustomActionKeyMap() *TableCustomActionKeyMap {
 	composeCommand := key.NewBinding(
 		key.WithKeys("c"),
 		key.WithHelp("c", "compose command"),
 	)
-	composeCommand.SetEnabled(!shellSelectionMode) // Disable compose command in shell selection mode
 	copyToClipboard := key.NewBinding(
 		key.WithKeys("y"),
 		key.WithHelp("y", "copy to clipboard"),
@@ -25,11 +26,16 @@ func GetTableCustomActionKeyMap(shellSelectionMode bool) *TableCustomActionKeyMa
 		key.WithKeys("enter"),
 		key.WithHelp("enter", "select for shell"),
 	)
-	selectForShell.SetEnabled(shellSelectionMode) // Enable select for shell only in shell selection mode
+	restoreCommand := key.NewBinding(
+		key.WithKeys("r"),
+		key.WithHelp("r", "restore command"),
+	)
+
 	return &TableCustomActionKeyMap{
 		ComposeCommand:  &composeCommand,
 		CopyToClipboard: &copyToClipboard,
 		SelectForShell:  &selectForShell,
+		RestoreCommand:  &restoreCommand,
 	}
 }
 
@@ -38,15 +44,40 @@ func GetTableNavigationKeyMap() *table.Navigation {
 	return table.GetDefaultNavigation()
 }
 
-func GetTableActionKeyMap(shellSelectionMode bool) *table.Action {
-	tableKeyBindings := table.GetDefaultAction()
-	if shellSelectionMode {
-		tableKeyBindings.Select.SetEnabled(false)
-		tableKeyBindings.SelectAll.SetEnabled(false)
-		tableKeyBindings.SelectClear.SetEnabled(false)
-		tableKeyBindings.SelectRange.SetEnabled(false)
-		tableKeyBindings.Enter.SetEnabled(false)
-		tableKeyBindings.Delete.SetEnabled(false)
-	}
-	return tableKeyBindings
+func GetTableActionKeyMap() *table.Action {
+	return table.GetDefaultAction()
+}
+
+func UpdateBindings(
+	tableActions *table.Action,
+	tableCustomActions *TableCustomActionKeyMap,
+	shellSelectionMode bool,
+	selectedCommand *dbmodels.Command,
+) {
+	tableCustomActions.SelectForShell.SetEnabled(
+		selectedCommand != nil &&
+			shellSelectionMode &&
+			selectedCommand.Status != dbmodels.CommandStatusDeleted,
+	)
+	tableCustomActions.ComposeCommand.SetEnabled(
+		!shellSelectionMode && selectedCommand != nil && selectedCommand.IsEditable(),
+	)
+	tableCustomActions.CopyToClipboard.SetEnabled(
+		selectedCommand != nil,
+	)
+	tableCustomActions.RestoreCommand.SetEnabled(
+		!shellSelectionMode &&
+			selectedCommand != nil &&
+			selectedCommand.Status == dbmodels.CommandStatusDeleted,
+	)
+	tableActions.Delete.SetEnabled(
+		!shellSelectionMode &&
+			selectedCommand != nil &&
+			selectedCommand.Status != dbmodels.CommandStatusDeleted,
+	)
+	tableActions.Select.SetEnabled(selectedCommand != nil)
+	tableActions.SelectAll.SetEnabled(selectedCommand != nil)
+	tableActions.SelectClear.SetEnabled(selectedCommand != nil)
+	tableActions.SelectRange.SetEnabled(selectedCommand != nil)
+	tableActions.Enter.SetEnabled(selectedCommand != nil && !shellSelectionMode)
 }

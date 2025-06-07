@@ -6,7 +6,7 @@ import (
 
 	dbmodels "github.com/fchastanet/shell-command-bookmarker/internal/services/models"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/resource"
-	"github.com/fchastanet/shell-command-bookmarker/pkg/tui/table"
+	pkgSearch "github.com/fchastanet/shell-command-bookmarker/pkg/search"
 )
 
 // matchFilter returns true if the item with the given ID matches the filter
@@ -28,10 +28,10 @@ func matchFilter(filterValue string, cmd *dbmodels.Command) bool {
 	}
 
 	// Try fuzzy subsequence matching if exact match fails
-	if table.FuzzyMatchSubsequence(col, filterValue) {
+	if pkgSearch.FuzzyMatchSubsequence(col, filterValue) {
 		return true
 	}
 
 	// Try advanced scoring if needed
-	return table.FuzzyMatchScore(col, filterValue) > table.ScoreThreshold
+	return pkgSearch.FuzzyMatchScore(col, filterValue) > pkgSearch.ScoreThreshold
 }

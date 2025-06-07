@@ -69,6 +69,9 @@ func (w *TextAreaWrapper) SetCharLimit(charLimit int) {
 
 // Update implements the Input interface
 func (w *TextAreaWrapper) Update(msg tea.Msg) (Input, tea.Cmd) {
+	if w.readOnly {
+		return w, nil
+	}
 	newModel, cmd := w.Model.Update(msg)
 	w.Model = &newModel
 	return w, cmd

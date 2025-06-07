@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fchastanet/shell-command-bookmarker/pkg/components/tabs"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/tui"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/tui/colors"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/tui/table"
@@ -20,7 +21,8 @@ type Styles struct {
 	EditorStyle    *EditorStyle
 	ScrollbarStyle *tui.ScrollbarStyle
 	// ColorTheme is the color theme used in the application.
-	ColorTheme *ColorTheme
+	ColorTheme        *ColorTheme
+	CategoryTabStyles tabs.CategoryTabStyles
 }
 
 type FooterStyle struct {
@@ -99,16 +101,17 @@ type HeaderStyle struct {
 
 func NewStyles() *Styles {
 	s := &Styles{
-		TableStyle:     nil,
-		PaneStyle:      nil,
-		HelpStyle:      nil,
-		FooterStyle:    nil,
-		HeaderStyle:    nil,
-		WindowStyle:    nil,
-		EditorStyle:    nil,
-		ScrollbarStyle: nil,
-		ColorTheme:     nil,
-		PlaceHolder:    nil,
+		TableStyle:        nil,
+		PaneStyle:         nil,
+		HelpStyle:         nil,
+		FooterStyle:       nil,
+		HeaderStyle:       nil,
+		WindowStyle:       nil,
+		EditorStyle:       nil,
+		ScrollbarStyle:    nil,
+		ColorTheme:        nil,
+		PlaceHolder:       nil,
+		CategoryTabStyles: nil,
 	}
 
 	// Initialize color theme
@@ -117,6 +120,7 @@ func NewStyles() *Styles {
 	// Initialize styles using the color theme
 	s.ColorTheme = colorTheme
 
+	s.CategoryTabStyles = tabs.NewCategoryTabStyles(colorTheme.PrimaryColor)
 	s.ScrollbarStyle = tui.GetDefaultScrollbarStyle()
 
 	s.initBaseStyles(colorTheme)
@@ -228,7 +232,7 @@ func (s *Styles) initComponentStyles(colorTheme *ColorTheme) {
 	s.TableStyle = table.GetDefaultStyle(s.ScrollbarStyle)
 
 	// Initialize editor style
-	titleStyle := bold.Foreground(colors.Black)
+	titleStyle := bold.Foreground(colors.White).Bold(true)
 	labelStyle := bold.Foreground(colors.DarkGrey)
 	labelStyleFocused := bold.Foreground(colors.Blue)
 	helpTextStyle := regular.Foreground(colors.Grey)

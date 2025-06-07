@@ -11,7 +11,7 @@ const (
 
 	// Height constants
 	FilterHeight = 2
-	HeaderHeight = 1
+	HeaderHeight = 2
 )
 
 type Style struct {

@@ -21,7 +21,9 @@ import (
 	"github.com/fchastanet/shell-command-bookmarker/internal/models/top/header"
 	"github.com/fchastanet/shell-command-bookmarker/internal/models/top/help"
 	"github.com/fchastanet/shell-command-bookmarker/internal/services"
+	dbmodels "github.com/fchastanet/shell-command-bookmarker/internal/services/models"
 	"github.com/fchastanet/shell-command-bookmarker/internal/version"
+	"github.com/fchastanet/shell-command-bookmarker/pkg/components/tabs"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/tui"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/tui/table"
 )
@@ -32,17 +34,9 @@ type mode int
 const (
 	normalMode mode = iota // default
 	promptMode             // confirm prompt is visible and taking input
-	filterMode             // filter is visible and taking input
 )
 
 const OutputFileMode = 0o600
-
-// indicate parent components that filter has been closed.
-type FilterClosedMsg struct{}
-
-func FilterClosed() tea.Msg {
-	return FilterClosedMsg{}
-}
 
 // QuitClearScreenMsg is a message type for quitting with screen clearing
 type QuitClearScreenMsg struct{}
@@ -73,7 +67,7 @@ const (
 type MessageClearTickMsg struct{}
 
 type KeyMaps struct {
-	filter            *keys.FilterKeyMap
+	filter            *tabs.FilterKeyMap
 	global            *keys.GlobalKeyMap
 	pane              *keys.PaneNavigationKeyMap
 	tableNavigation   *table.Navigation
@@ -94,11 +88,13 @@ type Model struct {
 
 	prompt *tui.YesNoPromptMsg
 
-	spinner     *spinner.Model
+	spinner *spinner.Model
+
+	selectedCommand *dbmodels.Command
+
 	footerModel footer.Model
 	headerModel header.Model
-
-	helpModel help.Model
+	helpModel   help.Model
 
 	width  int
 	height int
@@ -128,14 +124,14 @@ func NewModel(
 		global:            keys.GetGlobalKeyMap(),
 		pane:              keys.GetPaneNavigationKeyMap(),
 		tableNavigation:   keys.GetTableNavigationKeyMap(),
-		tableAction:       keys.GetTableActionKeyMap(appService.IsShellSelectionMode()),
-		tableCustomAction: keys.GetTableCustomActionKeyMap(appService.IsShellSelectionMode()),
+		tableAction:       keys.GetTableActionKeyMap(),
+		tableCustomAction: keys.GetTableCustomActionKeyMap(),
 		form:              keys.GetFormKeyMap(),
 	}
 
 	spinnerObj := spinner.New(spinner.WithSpinner(spinner.Line))
 
-	helpWidget := myStyles.HelpStyle.Main.Render("h/alt+? help")
+	helpWidget := myStyles.HelpStyle.Main.Render("F1/h/alt+? help")
 	versionWidget := myStyles.FooterStyle.Version.Render(version.Get())
 
 	// Create help and footer components
@@ -166,6 +162,7 @@ func NewModel(
 		messageClearTime:  time.Time{},
 		perfMonitorActive: false,
 		quitting:          false,
+		selectedCommand:   nil,
 	}
 	makers := NewMakerFactory(m.PaneManager, appService, myStyles, &spinnerObj, keyMaps)
 	m.SetMakerFactory(makers)
@@ -216,8 +213,10 @@ func (m *Model) dispatchMessage(msg tea.Msg) tea.Cmd {
 		m.handleMemoryStats(msg)
 		return tui.PerformanceMonitorTick(performanceMonitorInterval)
 	case structure.CommandSelectedForShellMsg:
-		cmd := m.handleCommandSelectedForShellMsg(msg)
-		return cmd
+		return m.handleCommandSelectedForShellMsg(msg)
+	case table.RowSelectedActionMsg[*dbmodels.Command]:
+		m.selectedCommand = msg.Row
+		m.updateHelpBindings()
 	}
 
 	if m.prompt != nil && m.mode == promptMode {
@@ -235,8 +234,9 @@ func (m *Model) dispatchMessage(msg tea.Msg) tea.Cmd {
 }
 
 func (m *Model) handlePromptMode(msg tea.Msg) tea.Cmd {
+	gKeys := m.keyMaps.global
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		if key.Matches(keyMsg, *m.keyMaps.global.Help) {
+		if key.Matches(keyMsg, *gKeys.Help) && gKeys.Help.Enabled() {
 			m.displayHelp()
 			return nil
 		}
@@ -268,7 +268,6 @@ func (m *Model) handleCommandSelectedForShellMsg(msg structure.CommandSelectedFo
 
 // handleFocusPaneChangedMsg handles the pane focus change message
 func (m *Model) handleFocusPaneChangedMsg(msg tea.Msg) tea.Cmd {
-	// Update the help bindings when the focused pane changes
 	m.updateHelpBindings()
 	// Send message to panes to resize themselves to make room for the prompt above it.
 	slog.Debug("handleWindowSize", "viewHeight", m.viewHeight())
@@ -374,35 +373,9 @@ func (m *Model) handleMemoryStats(msg tui.MemoryStatsMsg) {
 
 // handleKeyMsg processes key messages
 func (m *Model) handleKeyMsg(msg tea.KeyMsg) tea.Cmd {
-	var cmd tea.Cmd
-
 	switch m.mode {
 	case promptMode:
 		// already handled in Update method above
-	case filterMode:
-		switch {
-		case key.Matches(msg, *m.keyMaps.filter.Blur):
-			// Switch back to normal mode, and send message to current model
-			// to blur the filter widget
-			m.mode = normalMode
-			cmd = m.FocusedModel().Update(tui.FilterBlurMsg{})
-			return cmd
-		case key.Matches(msg, *m.keyMaps.filter.Close):
-			// Switch back to normal mode, and send message to current model
-			// to close the filter widget
-			m.mode = normalMode
-			closeMsg := tui.FilterCloseMsg{}
-			cmd = m.FocusedModel().Update(closeMsg)
-			if cmd == nil {
-				return FilterClosed
-			}
-			return cmd
-		default:
-			// Wrap key message in a filter key message and send to current
-			// model.
-			cmd = m.FocusedModel().Update(tui.FilterKeyMsg(msg))
-			return cmd
-		}
 	case normalMode:
 		cmd := m.PaneManager.Update(msg)
 		if cmd != nil {
@@ -437,48 +410,44 @@ func (m *Model) handleYesNoPrompt(promptMsg tui.YesNoPromptMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+//nolint:cyclop // not really complex
 func (m *Model) manageKey(msg tea.KeyMsg) tea.Cmd {
-	var cmd tea.Cmd
-
+	globalKeys := m.keyMaps.global
 	switch {
-	case key.Matches(msg, *m.keyMaps.global.Quit):
-		// In shell selection mode (with output-file parameter), Ctrl+C should exit immediately without confirmation
-		if m.appService.IsShellSelectionMode() {
-			m.quitting = true
-			return QuitWithClearScreen()
-		}
-
-		// In normal mode, Ctrl+C prompts for confirmation before quitting
-		cmd := tui.YesNoPrompt(
-			"Quit Shell Command Bookmarker?",
-			keys.GetFormKeyMap(),
-			func() tea.Cmd {
-				m.quitting = true
-				m.mode = normalMode
-				return QuitWithClearScreen()
-			},
-		)
-		return cmd
-	case key.Matches(msg, *m.keyMaps.global.Help):
+	case key.Matches(msg, *globalKeys.Quit) && globalKeys.Quit.Enabled():
+		return m.handleQuit()
+	case key.Matches(msg, *globalKeys.Help) && globalKeys.Help.Enabled():
 		m.displayHelp()
-	case key.Matches(msg, *m.keyMaps.tableAction.Filter):
-		// '/' enables filter mode if the current model indicates it
-		// supports it, which it does so by sending back a non-nil command.
-		if cmd = m.FocusedModel().Update(tui.FilterFocusReqMsg{}); cmd != nil {
-			m.mode = filterMode
-		}
-		return cmd
-	case key.Matches(msg, *m.keyMaps.global.Debug):
+	case key.Matches(msg, *globalKeys.Debug) && globalKeys.Debug.Enabled():
 		// ctrl+d shows memory stats for debugging performance
 		if m.perfMonitorActive {
 			return tui.StopPerformanceMonitor()
 		}
 		return tui.StartPerformanceMonitor(performanceMonitorInterval)
-	case key.Matches(msg, *m.keyMaps.global.Search):
+	case key.Matches(msg, *globalKeys.Search) && globalKeys.Search.Enabled():
 		return models.NavigateTo(structure.SearchKind, structure.WithPosition(structure.LeftPane))
 	default:
 	}
 	return nil
+}
+
+func (m *Model) handleQuit() tea.Cmd {
+	// In shell selection mode (with output-file parameter), Ctrl+C should exit immediately without confirmation
+	if m.appService.IsShellSelectionMode() {
+		m.quitting = true
+		return QuitWithClearScreen()
+	}
+
+	// In normal mode, Ctrl+C prompts for confirmation before quitting
+	return tui.YesNoPrompt(
+		"Quit Shell Command Bookmarker?",
+		keys.GetFormKeyMap(),
+		func() tea.Cmd {
+			m.quitting = true
+			m.mode = normalMode
+			return QuitWithClearScreen()
+		},
+	)
 }
 
 func (m *Model) displayHelp() {
@@ -531,23 +500,27 @@ func (m *Model) View() string {
 func (m *Model) updateHelpBindings() {
 	// Clear previous binding sets
 	m.helpModel.ClearBindingSets()
-	if m.helpModel.IsVisible() {
-		switch m.mode {
-		case promptMode:
-			// For prompt mode, just use a single set
-			m.helpModel.AddBindingSet("Prompt Controls", keys.GetFormBindings())
-		case filterMode:
-			// For filter mode, just use a single set
+	switch m.mode {
+	case promptMode:
+		// For prompt mode, just use a single set
+		m.helpModel.AddBindingSet("Prompt Controls", keys.GetFormBindings())
+	case normalMode:
+		// For normal mode, organize bindings into logical groups
+		m.helpModel.AddBindingSet("Global", keys.KeyMapToSlice(*m.keyMaps.global))
+		m.helpModel.AddBindingSet("Pane Navigation", m.HelpBindings())
+		if m.FocusedPosition() == structure.TopPane {
 			m.helpModel.AddBindingSet("Filter Controls", keys.KeyMapToSlice(*m.keyMaps.filter))
-		case normalMode:
-			// For normal mode, organize bindings into logical groups
-			m.helpModel.AddBindingSet("Global", keys.KeyMapToSlice(*m.keyMaps.global))
-			m.helpModel.AddBindingSet("Pane Navigation", m.HelpBindings())
-			if m.FocusedPosition() == structure.TopPane {
-				m.helpModel.AddBindingSet("Table Nav", keys.KeyMapToSlice(*m.keyMaps.tableNavigation))
-				m.helpModel.AddBindingSet("Table Actions", keys.KeyMapToSlice(*m.keyMaps.tableAction))
-				m.helpModel.AddBindingSet("Command Actions", keys.KeyMapToSlice(*m.keyMaps.tableCustomAction))
-			}
+			m.helpModel.AddBindingSet("Table Nav", keys.KeyMapToSlice(*m.keyMaps.tableNavigation))
+			tableActions := m.keyMaps.tableAction
+			tableCustomActions := m.keyMaps.tableCustomAction
+			keys.UpdateBindings(
+				tableActions,
+				tableCustomActions,
+				m.appService.IsShellSelectionMode(),
+				m.selectedCommand,
+			)
+			m.helpModel.AddBindingSet("Table Actions", keys.KeyMapToSlice(*tableActions))
+			m.helpModel.AddBindingSet("Command Actions", keys.KeyMapToSlice(*tableCustomActions))
 		}
 	}
 }

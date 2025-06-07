@@ -84,9 +84,9 @@ func PerformanceMonitorTick(interval time.Duration) tea.Cmd {
 // FilterFocusReqMsg is a request to focus the filter widget.
 type FilterFocusReqMsg struct{}
 
-// FilterBlurMsg is a request to un-focus the filter widget. It is not
+// FilterValidateMsg is a request to validate the filter widget. It is not
 // acknowledged.
-type FilterBlurMsg struct{}
+type FilterValidateMsg struct{}
 
 // FilterCloseMsg is a request to close the filter widget. It is not
 // acknowledged.
