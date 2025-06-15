@@ -7,7 +7,7 @@ func (m *Model[V]) setColumnWidths() {
 	var (
 		// total available flex width initialized to total table width minus the
 		// padding on each col (2) and the scrollbar to the right
-		totalFlexWidth  = m.width - m.styles.ScrollbarStyle.GetScrollbarWidth() - 2*len(m.cols)
+		totalFlexWidth  = m.width - m.styles.GetTableScrollbarStyle().GetScrollbarWidth() - 2*len(m.cols)
 		totalFlexFactor int
 		flexGCD         int
 	)

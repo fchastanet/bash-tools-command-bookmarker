@@ -3,6 +3,7 @@ package command
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/atotto/clipboard"
@@ -55,6 +56,7 @@ func (mm *ListMaker) Make(_ resource.ID, width, height int) (structure.ChildMode
 	scriptColumn := newColumn(table.ColumnKey(structure.FieldScript), "Script", table.GetDefaultTruncationFunc())
 	statusColumn := newColumn(table.ColumnKey(structure.FieldStatus), "Status", table.GetDefaultTruncationFunc())
 	lintStatusColumn := newColumn(table.ColumnKey(structure.FieldLintStatus), "Lint", table.GetDefaultTruncationFunc())
+	filterScoreColumn := newColumn(table.ColumnKey(structure.FieldFilterScore), "Score", table.NoTruncate)
 
 	// set filter
 	filter := filters.NewInput()
@@ -87,6 +89,7 @@ func (mm *ListMaker) Make(_ resource.ID, width, height int) (structure.ChildMode
 		scriptColumn:            &scriptColumn,
 		statusColumn:            &statusColumn,
 		lintStatusColumn:        &lintStatusColumn,
+		filterScoreColumn:       &filterScoreColumn,
 		categoryTabs:            categoryTabs,
 	}
 	renderer := func(cmd *dbmodels.Command) table.RenderedRow {
@@ -97,6 +100,10 @@ func (mm *ListMaker) Make(_ resource.ID, width, height int) (structure.ChildMode
 		sortState := m.categoryTabs.GetActiveSortState()
 
 		columns := m.getColumns()
+		if colIndex < 0 || colIndex >= len(columns) {
+			// If the column index is out of bounds, return the cell content as is
+			return cellContent
+		}
 		column := columns[colIndex]
 
 		// Apply primary sort indicator
@@ -118,7 +125,7 @@ func (mm *ListMaker) Make(_ resource.ID, width, height int) (structure.ChildMode
 
 	cellRenderer := func(_ *dbmodels.Command, cellContent string, colIndex int, rowEdited bool) string {
 		if rowEdited && colIndex == indexColumnStatus {
-			cellContent = m.styles.TableStyle.CellEdited.Render("Edited")
+			cellContent = m.styles.TableStyle.GetTableCellEditedStyle().Render("Edited")
 		}
 		return cellContent
 	}
@@ -165,11 +172,12 @@ func (*ListMaker) renderRow(
 	commandsListModel *commandsList,
 ) table.RenderedRow {
 	return table.RenderedRow{
-		commandsListModel.idColumn.Key:         fmt.Sprintf("%d", cmd.GetID()),
-		commandsListModel.titleColumn.Key:      cmd.Title,
-		commandsListModel.scriptColumn.Key:     cmd.Script,
-		commandsListModel.statusColumn.Key:     formatStatus(cmd, commandsListModel.styles.EditorStyle),
-		commandsListModel.lintStatusColumn.Key: formatLintStatus(cmd, commandsListModel.styles.EditorStyle),
+		commandsListModel.idColumn.Key:          fmt.Sprintf("%d", cmd.GetID()),
+		commandsListModel.titleColumn.Key:       cmd.Title,
+		commandsListModel.scriptColumn.Key:      cmd.Script,
+		commandsListModel.statusColumn.Key:      formatStatus(cmd, commandsListModel.styles.EditorStyle),
+		commandsListModel.lintStatusColumn.Key:  formatLintStatus(cmd, commandsListModel.styles.EditorStyle),
+		commandsListModel.filterScoreColumn.Key: strconv.Itoa(cmd.FilterScore),
 	}
 }
 
@@ -224,11 +232,12 @@ type commandsList struct {
 		string,
 	]
 
-	idColumn         *table.Column
-	titleColumn      *table.Column
-	scriptColumn     *table.Column
-	statusColumn     *table.Column
-	lintStatusColumn *table.Column
+	idColumn          *table.Column
+	titleColumn       *table.Column
+	scriptColumn      *table.Column
+	statusColumn      *table.Column
+	lintStatusColumn  *table.Column
+	filterScoreColumn *table.Column
 
 	height int
 	width  int
@@ -241,25 +250,41 @@ func (*commandsList) BeforeSwitchPane() tea.Cmd {
 }
 
 func (m *commandsList) getColumns() []table.Column {
-	return []table.Column{
+	columns := []table.Column{
 		*m.idColumn,
 		*m.titleColumn,
 		*m.scriptColumn,
 		*m.statusColumn,
 		*m.lintStatusColumn,
 	}
+	if m.categoryTabs.GetActiveFilter() != "" {
+		columns = append(columns, *m.filterScoreColumn)
+	}
+	return columns
 }
 
 func (m *commandsList) computeColumnsWidth(width int) {
-	const columnsCount = 5
+	columnsCount := 5
+	spaceForAdditionalColumn := 0
+	if m.categoryTabs.GetActiveFilter() != "" {
+		columnsCount++
+		spaceForAdditionalColumn = 1
+	}
+
 	const roundedAdaptation = 1
+
 	w := width -
-		columnsCount*m.styles.TableStyle.Cell.GetHorizontalPadding()*sidesCount
-	m.idColumn.Width = idColumnPercentWidth*w/percent + roundedAdaptation
-	m.titleColumn.Width = titleColumnPercentWidth*w/percent + roundedAdaptation
-	m.scriptColumn.Width = scriptColumnPercentWidth*w/percent + roundedAdaptation
-	m.statusColumn.Width = statusColumnPercentWidth*w/percent + roundedAdaptation
-	m.lintStatusColumn.Width = lintStatusColumnPercentWidth*w/percent + roundedAdaptation
+		columnsCount*m.styles.TableStyle.GetTableCellStyle().GetHorizontalPadding()*sidesCount
+	m.idColumn.Width = (idColumnPercentWidth-spaceForAdditionalColumn)*w/percent + roundedAdaptation
+	m.titleColumn.Width = (titleColumnPercentWidth-spaceForAdditionalColumn)*w/percent + roundedAdaptation
+	m.scriptColumn.Width = (scriptColumnPercentWidth-spaceForAdditionalColumn)*w/percent + roundedAdaptation
+	m.statusColumn.Width = (statusColumnPercentWidth-spaceForAdditionalColumn)*w/percent + roundedAdaptation
+	m.lintStatusColumn.Width = (lintStatusColumnPercentWidth-spaceForAdditionalColumn)*w/percent + roundedAdaptation
+	if m.categoryTabs.GetActiveFilter() != "" {
+		m.filterScoreColumn.Width = columnsCount
+	} else {
+		m.filterScoreColumn.Width = 0 // Hide the filter score column if no filter is active
+	}
 	m.Model.SetColumns(m.getColumns())
 }
 
@@ -368,7 +393,8 @@ func (m *commandsList) loadCommandsForCurrentCategory(selectRowID resource.ID) t
 		if m.categoryTabs.GetActiveFilter() != "" {
 			filteredRows := make([]*dbmodels.Command, 0, len(rows))
 			for _, cmd := range rows {
-				if matchFilter(m.categoryTabs.GetActiveFilter(), cmd) {
+				if match, score := matchFilter(m.categoryTabs.GetActiveFilter(), cmd); match {
+					cmd.FilterScore = score
 					filteredRows = append(filteredRows, cmd)
 				}
 			}

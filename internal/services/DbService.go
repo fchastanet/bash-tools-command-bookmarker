@@ -235,6 +235,7 @@ func (s *DBService) GetCommands(statuses ...models.CommandStatus) ([]*models.Com
 			Elapsed:              0,
 			CreationDatetime:     time.Time{},
 			ModificationDatetime: time.Time{},
+			FilterScore:          0,
 		}
 		err := rows.Scan(
 			&command.ID,

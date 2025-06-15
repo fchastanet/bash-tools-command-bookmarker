@@ -66,7 +66,7 @@ type CategoryTabs[
 	CommandStatus any,
 	FieldType string,
 ] struct {
-	styles        CategoryTabStyles
+	styles        CategoryTabStylesInterface
 	inputModel    InputModel
 	adapter       CategoryAdapterInterface[ElementType, CommandStatus, FieldType] // Adapter for category-specific logic
 	filterKeyMap  *FilterKeyMap
@@ -116,7 +116,7 @@ func NewCategoryTabs[
 	CommandStatus any,
 	FieldType string,
 ](
-	styles CategoryTabStyles,
+	styles CategoryTabStylesInterface,
 	inputModel InputModel,
 	adapter CategoryAdapterInterface[ElementType, CommandStatus, FieldType],
 	filterKeyMap *FilterKeyMap,

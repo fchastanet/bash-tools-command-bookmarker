@@ -25,7 +25,7 @@ type Option[FieldType string] struct {
 
 // State contains the current sort configuration
 type State[ElementType resource.Identifiable, FieldType string] struct {
-	EditorSortStyles   EditorSortStyles
+	EditorSortStyles   EditorSortStylesInterface
 	IDField            FieldType
 	PrimarySort        *Option[FieldType]
 	SecondarySort      *Option[FieldType]
@@ -61,7 +61,7 @@ type MsgSortEditModeChanged[ElementType resource.Identifiable, FieldType string]
 
 // NewDefaultState creates a new default sort state
 func NewDefaultState[ElementType resource.Identifiable, FieldType string](
-	editorStyles EditorSortStyles,
+	editorStyles EditorSortStylesInterface,
 	idField FieldType,
 	fields []FieldType,
 	keyMap *KeyMap,

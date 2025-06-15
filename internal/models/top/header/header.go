@@ -1,7 +1,6 @@
 package header
 
 import (
-	"github.com/charmbracelet/lipgloss"
 	"github.com/fchastanet/shell-command-bookmarker/internal/models/styles"
 )
 
@@ -38,13 +37,5 @@ func (m *Model) SetWidth(width int) {
 
 // View renders the header component
 func (m *Model) View() string {
-	// Create a centered, bold header style
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Background(lipgloss.Color("#000080")). // Navy blue background
-		Width(m.width).
-		Align(lipgloss.Center)
-
-	return headerStyle.Render(m.title)
+	return m.styles.HeaderStyle.Title.Width(m.width).Render(m.title)
 }

@@ -104,3 +104,15 @@ func GetDummyCmd() tea.Cmd {
 		return DummyMsg{}
 	}
 }
+
+type ResizeMsg[V any] struct {
+	Model  V
+	Width  int
+	Height int
+}
+
+func GetResizeCmd[V any](model V, width, height int) tea.Cmd {
+	return func() tea.Msg {
+		return ResizeMsg[V]{Model: model, Width: width, Height: height}
+	}
+}

@@ -114,6 +114,7 @@ linters:
             - github.com/stretchr/testify
             - golang.org/x/exp/maps
             - github.com/lithammer/fuzzysearch/fuzzy
+            - github.com/charmbracelet/lipgloss
     errcheck:
       # To disable the errcheck built-in exclude list.
       # See `-excludeonly` option in https://github.com/kisielk/errcheck#excluding-functions for details.

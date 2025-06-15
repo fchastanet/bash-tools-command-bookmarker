@@ -12,7 +12,7 @@ import (
 )
 
 type Styles struct {
-	TableStyle     *table.Style
+	TableStyle     table.StyleInterface
 	PaneStyle      *PaneStyle
 	PlaceHolder    *lipgloss.Style
 	HelpStyle      *HelpStyle
@@ -23,8 +23,13 @@ type Styles struct {
 	ScrollbarStyle *tui.ScrollbarStyle
 	// ColorTheme is the color theme used in the application.
 	ColorTheme        *ColorTheme
-	CategoryTabStyles tabs.CategoryTabStyles
-	SortStyles        sort.EditorSortStyles
+	CategoryTabStyles tabs.CategoryTabStylesInterface
+	SortStyles        sort.EditorSortStylesInterface
+}
+
+type Style struct {
+	ActiveStyle   *lipgloss.Style
+	InactiveStyle *lipgloss.Style
 }
 
 type FooterStyle struct {
@@ -79,12 +84,37 @@ type HelpStyle struct {
 	BordersWidth int
 }
 
+type TableStyle struct {
+	tableHeaderStyle     *lipgloss.Style
+	tableHeaderCellStyle *lipgloss.Style
+	// Border style for the table
+	border *lipgloss.Style
+	// Style for the table filters header
+	filtersBlock *lipgloss.Style
+	// Style for the table cell
+	cell *lipgloss.Style
+	// ScrollbarStyle is the style for the scrollbar.
+	scrollbarStyle *tui.ScrollbarStyle
+
+	row                   *lipgloss.Style
+	currentRow            *lipgloss.Style
+	selectedRow           *lipgloss.Style
+	currentAndSelectedRow *lipgloss.Style
+	cellEdited            *lipgloss.Style
+
+	// Height of the table header
+	headerHeight int
+	// Height of filter widget
+	filterHeight int
+}
+
 // EditorStyle contains styling for the command editor component
 type EditorStyle struct {
-	Title        *lipgloss.Style
-	Label        *lipgloss.Style
-	LabelFocused *lipgloss.Style
-	HelpText     *lipgloss.Style
+	Title           *lipgloss.Style
+	Label           *lipgloss.Style
+	LabelFocused    *lipgloss.Style
+	HelpText        *lipgloss.Style
+	HelpTextFocused *lipgloss.Style
 	// Added styles for readonly information
 	ReadonlyLabel  *lipgloss.Style
 	ReadonlyValue  *lipgloss.Style
@@ -96,8 +126,19 @@ type EditorStyle struct {
 	ContentPadding int
 }
 
+func (*EditorStyle) GetInputWrapperWarningStyle() *lipgloss.Style {
+	warningStyle := lipgloss.NewStyle().Foreground(colors.Yellow).Bold(true)
+	return &warningStyle
+}
+
+func (*EditorStyle) GetTextAreaWrapperWarningStyle() *lipgloss.Style {
+	warningStyle := lipgloss.NewStyle().Foreground(colors.Yellow).Bold(true)
+	return &warningStyle
+}
+
 type HeaderStyle struct {
 	Main   *lipgloss.Style
+	Title  lipgloss.Style
 	Height int
 }
 
@@ -123,13 +164,60 @@ func NewStyles() *Styles {
 	// Initialize styles using the color theme
 	s.ColorTheme = colorTheme
 
-	s.CategoryTabStyles = tabs.NewCategoryTabStyles(colorTheme.PrimaryColor)
+	s.CategoryTabStyles = s.getCategoryTabsStyles(colorTheme.PrimaryColor)
 	s.ScrollbarStyle = tui.GetDefaultScrollbarStyle()
 
 	s.initBaseStyles(colorTheme)
 	s.initComponentStyles(colorTheme)
 
 	return s
+}
+
+type CategoryTabStyles struct {
+	activeTabStyle       *lipgloss.Style
+	inactiveTabStyle     *lipgloss.Style
+	navigationArrowStyle *lipgloss.Style
+	tabCountStyle        *lipgloss.Style
+}
+
+func (*Styles) getCategoryTabsStyles(primaryColor lipgloss.TerminalColor) tabs.CategoryTabStylesInterface {
+	activeTabStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("white")).
+		Background(primaryColor).
+		Bold(true).
+		Padding(0, PaddingMedium).
+		Margin(0, 1)
+	inactiveTabStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Padding(0, 1).
+		Margin(0, 1)
+	navigationArrowStyle := lipgloss.NewStyle().
+		Foreground(primaryColor).
+		Bold(true)
+	tabCountStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("white"))
+	return &CategoryTabStyles{
+		activeTabStyle:       &activeTabStyle,
+		inactiveTabStyle:     &inactiveTabStyle,
+		navigationArrowStyle: &navigationArrowStyle,
+		tabCountStyle:        &tabCountStyle,
+	}
+}
+
+func (s *CategoryTabStyles) GetActiveTabStyle() *lipgloss.Style {
+	return s.activeTabStyle
+}
+
+func (s *CategoryTabStyles) GetInactiveTabStyle() *lipgloss.Style {
+	return s.inactiveTabStyle
+}
+
+func (s *CategoryTabStyles) GetNavigationArrowStyle() *lipgloss.Style {
+	return s.navigationArrowStyle
+}
+
+func (s *CategoryTabStyles) GetTabCountStyle() *lipgloss.Style {
+	return s.tabCountStyle
 }
 
 func (s *Styles) initBaseStyles(colorTheme *ColorTheme) {
@@ -200,10 +288,20 @@ func (s *Styles) initBaseStyles(colorTheme *ColorTheme) {
 	}
 
 	// Initialize header style
-	headerStyle := headerInline.Background(colors.Blue).Foreground(colors.White).Bold(true)
+	headerStyle := headerInline.
+		Bold(true).
+		Background(colors.Blue).
+		Foreground(colors.White)
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Align(lipgloss.Center).
+		Foreground(colors.White).
+		Background(lipgloss.Color("#000080")) // Navy blue background
+
 	s.HeaderStyle = &HeaderStyle{
 		Height: HeightHeader,
 		Main:   &headerStyle,
+		Title:  titleStyle,
 	}
 }
 
@@ -232,13 +330,14 @@ func (s *Styles) initComponentStyles(colorTheme *ColorTheme) {
 	}
 
 	// Initialize table style
-	s.TableStyle = table.GetDefaultStyle(s.ScrollbarStyle)
+	s.TableStyle = getTableStyle(s.ScrollbarStyle)
 
 	// Initialize editor style
 	titleStyle := bold.Foreground(colors.White).Bold(true)
 	labelStyle := bold.Foreground(colors.DarkGrey)
 	labelStyleFocused := bold.Foreground(colors.Blue)
 	helpTextStyle := regular.Foreground(colors.Grey)
+	helpTextStyleFocused := regular.Bold(true)
 	readonlyLabelStyle := bold.Foreground(colors.LightGrey)
 	readonlyValueStyle := regular.Foreground(colors.LightGrey)
 	statusOKStyle := regular.Foreground(colors.Green)
@@ -247,21 +346,130 @@ func (s *Styles) initComponentStyles(colorTheme *ColorTheme) {
 	statusDisabledStyle := regular.Foreground(colors.DarkGrey)
 
 	s.EditorStyle = &EditorStyle{
-		Title:          &titleStyle,
-		Label:          &labelStyle,
-		LabelFocused:   &labelStyleFocused,
-		HelpText:       &helpTextStyle,
-		ContentPadding: PaddingSmall,
-		ReadonlyLabel:  &readonlyLabelStyle,
-		ReadonlyValue:  &readonlyValueStyle,
-		StatusOK:       &statusOKStyle,
-		StatusWarning:  &statusWarningStyle,
-		StatusError:    &statusErrorStyle,
-		StatusDisabled: &statusDisabledStyle,
-		ScrollbarStyle: s.ScrollbarStyle,
+		Title:           &titleStyle,
+		Label:           &labelStyle,
+		LabelFocused:    &labelStyleFocused,
+		HelpText:        &helpTextStyle,
+		HelpTextFocused: &helpTextStyleFocused,
+		ContentPadding:  PaddingSmall,
+		ReadonlyLabel:   &readonlyLabelStyle,
+		ReadonlyValue:   &readonlyValueStyle,
+		StatusOK:        &statusOKStyle,
+		StatusWarning:   &statusWarningStyle,
+		StatusError:     &statusErrorStyle,
+		StatusDisabled:  &statusDisabledStyle,
+		ScrollbarStyle:  s.ScrollbarStyle,
 	}
 
-	s.SortStyles = sort.GetDefaultEditorSortStyles()
+	s.SortStyles = getEditorSortStyles()
+}
+
+func getTableStyle(scrollbarStyle *tui.ScrollbarStyle) table.StyleInterface {
+	regular := lipgloss.NewStyle()
+
+	CurrentBackground := colors.Grey
+	CurrentForeground := colors.White
+	SelectedBackground := lipgloss.Color("110")
+	SelectedForeground := colors.Black
+	CurrentAndSelectedBackground := lipgloss.Color("117")
+	CurrentAndSelectedForeground := colors.Black
+
+	tableHeaderStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true)
+
+	tableHeaderCellStyle := lipgloss.NewStyle().
+		Inline(true).
+		Bold(true).
+		Italic(true)
+
+	tableFilterBlock := regular.Margin(0, 1)
+	tableCell := regular.Padding(0, PaddingSmall)
+	tableBorderStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240"))
+	cellEdited := regular.Italic(true).Foreground(colors.Yellow)
+
+	// Row styles using the color theme
+	row := lipgloss.NewStyle()
+	currentRow := tableCell.
+		Background(CurrentBackground).
+		Foreground(CurrentForeground)
+	selectedRow := tableCell.
+		Background(SelectedBackground).
+		Foreground(SelectedForeground)
+	currentAndSelectedRow := tableCell.
+		Background(CurrentAndSelectedBackground).
+		Foreground(CurrentAndSelectedForeground)
+
+	return &TableStyle{
+		tableHeaderStyle:      &tableHeaderStyle,
+		tableHeaderCellStyle:  &tableHeaderCellStyle,
+		border:                &tableBorderStyle,
+		filtersBlock:          &tableFilterBlock,
+		cell:                  &tableCell,
+		cellEdited:            &cellEdited,
+		row:                   &row,
+		currentRow:            &currentRow,
+		selectedRow:           &selectedRow,
+		currentAndSelectedRow: &currentAndSelectedRow,
+		headerHeight:          TableHeaderHeight,
+		filterHeight:          TableFilterHeight,
+		scrollbarStyle:        scrollbarStyle,
+	}
+}
+
+func (t *TableStyle) GetTableBorderStyle() *lipgloss.Style {
+	return t.border
+}
+
+func (t *TableStyle) GetTableFiltersBlockStyle() *lipgloss.Style {
+	return t.filtersBlock
+}
+
+func (t *TableStyle) GetTableCellStyle() *lipgloss.Style {
+	return t.cell
+}
+
+func (t *TableStyle) GetTableRowStyle() *lipgloss.Style {
+	return t.row
+}
+
+func (t *TableStyle) GetTableCurrentRowStyle() *lipgloss.Style {
+	return t.currentRow
+}
+
+func (t *TableStyle) GetTableSelectedRowStyle() *lipgloss.Style {
+	return t.selectedRow
+}
+
+func (t *TableStyle) GetTableCurrentAndSelectedRowStyle() *lipgloss.Style {
+	return t.currentAndSelectedRow
+}
+
+func (t *TableStyle) GetTableCellEditedStyle() *lipgloss.Style {
+	return t.cellEdited
+}
+
+func (t *TableStyle) GetTableScrollbarStyle() *tui.ScrollbarStyle {
+	return t.scrollbarStyle
+}
+
+func (t *TableStyle) GetTableHeaderHeight() int {
+	return t.headerHeight
+}
+
+func (t *TableStyle) GetTableFilterHeight() int {
+	return t.filterHeight
+}
+
+func (t *TableStyle) GetTableHeaderStyle() *lipgloss.Style {
+	return t.tableHeaderStyle
+}
+
+func (t *TableStyle) GetTableHeaderCellStyle() *lipgloss.Style {
+	return t.tableHeaderCellStyle
 }
 
 func (s *Styles) Init() {
@@ -310,4 +518,21 @@ func (s *EditorStyle) GetScrollbarTrack() string {
 
 func (s *EditorStyle) GetScrollbarWidth() int {
 	return s.ScrollbarStyle.Width
+}
+
+func getEditorSortStyles() sort.EditorSortStylesInterface {
+	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	return Style{
+		ActiveStyle:   &activeStyle,
+		InactiveStyle: &inactiveStyle,
+	}
+}
+
+func (s Style) GetActiveStyle() *lipgloss.Style {
+	return s.ActiveStyle
+}
+
+func (s Style) GetInactiveStyle() *lipgloss.Style {
+	return s.InactiveStyle
 }

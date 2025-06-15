@@ -23,7 +23,7 @@ func NewMakerFactory(
 	app services.AppServiceInterface,
 	myStyles *styles.Styles,
 	spinnerObj *spinner.Model,
-	keyMaps *KeyMaps,
+	keyMaps *structure.KeyMaps,
 ) func(kind resource.Kind) models.Maker {
 	makers := make(map[resource.Kind]models.Maker)
 	makers[structure.CommandListKind] = &command.ListMaker{
@@ -31,11 +31,11 @@ func NewMakerFactory(
 		EditorsCache:            editorsCache,
 		Styles:                  myStyles,
 		Spinner:                 spinnerObj,
-		TableCustomActionKeyMap: keyMaps.tableCustomAction,
-		NavigationKeyMap:        keyMaps.tableNavigation,
-		ActionKeyMap:            keyMaps.tableAction,
-		FilterKeyMap:            keyMaps.filter,
-		SortKeyMap:              keyMaps.sort,
+		TableCustomActionKeyMap: keyMaps.TableCustomAction,
+		NavigationKeyMap:        keyMaps.TableNavigation,
+		ActionKeyMap:            keyMaps.TableAction,
+		FilterKeyMap:            keyMaps.Filter,
+		SortKeyMap:              keyMaps.Sort,
 	}
 	makers[structure.SearchKind] = &command.SearchMaker{
 		App:     app.Self(),
@@ -45,7 +45,7 @@ func NewMakerFactory(
 	makers[structure.CommandEditorKind] = &command.EditorMaker{
 		App:          app.Self(),
 		Styles:       myStyles,
-		EditorKeyMap: keyMaps.editor,
+		EditorKeyMap: keyMaps.Editor,
 	}
 	return func(kind resource.Kind) models.Maker {
 		maker, ok := makers[kind]

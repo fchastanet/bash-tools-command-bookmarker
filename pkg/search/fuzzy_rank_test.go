@@ -13,12 +13,6 @@ func TestFuzzyScoring(t *testing.T) {
 		t.Errorf("Expected match for hello in hello world")
 	}
 
-	// Test our wrapper function
-	result := FuzzyMatchSubsequence("Hello World", "hlo")
-	if !result {
-		t.Errorf("Expected FuzzyMatchSubsequence to match 'hlo' in 'Hello World'")
-	}
-
 	// Test score function returns positive for a match
 	score := FuzzyMatchScore("Hello World", "hello")
 	if score <= 0 {

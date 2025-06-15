@@ -47,7 +47,7 @@ func CommandSortFuncDynamic[ElementType resource.Identifiable, FieldType string]
 	}
 }
 
-func CompareInt(i, j resource.ID) int {
+func CompareInt(i, j int) int {
 	if i < j {
 		return -1
 	} else if i > j {

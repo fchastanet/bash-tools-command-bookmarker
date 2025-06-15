@@ -5,33 +5,32 @@ import (
 	"strings"
 
 	dbmodels "github.com/fchastanet/shell-command-bookmarker/internal/services/models"
-	"github.com/fchastanet/shell-command-bookmarker/pkg/resource"
 	pkgSearch "github.com/fchastanet/shell-command-bookmarker/pkg/search"
 )
 
 // matchFilter returns true if the item with the given ID matches the filter
 // value using fuzzy matching.
-func matchFilter(filterValue string, cmd *dbmodels.Command) bool {
+func matchFilter(filterValue string, cmd *dbmodels.Command) (matched bool, score int) {
 	if filterValue == "" {
-		return true
-	}
-
-	// Try to match id
-	if id, err := strconv.Atoi(filterValue); err == nil && cmd.GetID() == resource.ID(id) {
-		return true
+		return true, 0
 	}
 
 	// Try exact match first (fastest)
-	col := cmd.Title + " " + cmd.Description + " " + cmd.Script
-	if strings.Contains(strings.ToLower(col), strings.ToLower(filterValue)) {
-		return true
+	// We check the ID as a string, title, description, and script.
+	if cmd.Title == filterValue ||
+		cmd.Description == filterValue ||
+		cmd.Script == filterValue ||
+		strconv.Itoa(int(cmd.GetID())) == filterValue {
+		return true, pkgSearch.MaxScore
 	}
 
-	// Try fuzzy subsequence matching if exact match fails
-	if pkgSearch.FuzzyMatchSubsequence(col, filterValue) {
-		return true
+	// Check if the filter value is a substring of any of the fields
+	col := cmd.Title + " " + cmd.Description + " " + cmd.Script
+	if strings.Contains(strings.ToLower(col), strings.ToLower(filterValue)) {
+		return true, pkgSearch.MaxScore - 1
 	}
 
 	// Try advanced scoring if needed
-	return pkgSearch.FuzzyMatchScore(col, filterValue) > pkgSearch.ScoreThreshold
+	score = pkgSearch.FuzzyMatchScore(col, filterValue)
+	return score > pkgSearch.ScoreThreshold, score
 }

@@ -25,14 +25,14 @@ const (
 // CategoryAdapter helps translate between UI category types and service-level categories
 type CategoryAdapter struct {
 	historyService *services.HistoryService
-	sortStyles     sort.EditorSortStyles
+	sortStyles     sort.EditorSortStylesInterface
 	sortKeyMap     *sort.KeyMap
 }
 
 // NewCategoryAdapter creates a new adapter for category conversions
 func NewCategoryAdapter(
 	historyService *services.HistoryService,
-	sortStyles sort.EditorSortStyles,
+	sortStyles sort.EditorSortStylesInterface,
 	sortKeyMap *sort.KeyMap,
 ) *CategoryAdapter {
 	return &CategoryAdapter{
@@ -57,17 +57,24 @@ func (ca *CategoryAdapter) GetCategoryTabs(
 		structure.FieldLintStatus,
 		structure.FieldCreationDate,
 		structure.FieldModificationDate,
+		structure.FieldFilterScore,
 	}
 
 	// Create a function that returns a new sort state for each tab
 	createNewSortState := func() *sort.State[*dbmodels.Command, string] {
-		return sort.NewDefaultState(
+		sortState := sort.NewDefaultState(
 			ca.sortStyles,
-			structure.FieldID,
+			structure.FieldFilterScore,
 			sortFields,
 			ca.sortKeyMap,
 			compareBySortFieldFunc,
 		)
+		sortState.PrimarySort.Direction = sort.DirectionDesc
+		sortState.SecondarySort = &sort.Option[structure.Field]{
+			Field:     structure.FieldID,
+			Direction: sort.DirectionAsc,
+		}
+		return sortState
 	}
 
 	return []pkgTabs.CategoryTab[

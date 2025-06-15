@@ -20,6 +20,10 @@ const (
 	WidthMinContent = 80
 	BordersWidth    = 2
 
+	// Table constants
+	TableFilterHeight = 2
+	TableHeaderHeight = 2
+
 	// Help layout constants
 	HelpColumnMargin = 3
 

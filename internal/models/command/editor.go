@@ -125,17 +125,22 @@ func (m *commandEditor) Init() tea.Cmd {
 		return nil
 	}
 	// Initialize the text inputs
-	titleInput := inputs.NewInputWrapper("Enter title")
+	titleInput := inputs.NewInputWrapper("Enter title", m.styles.EditorStyle)
 	titleInput.SetCharLimit(titleInputMaxSize)
 	titleInput.Focus()
 
 	descriptionInput := inputs.NewTextAreaWrapper(
 		descriptionInputHeight,
 		"Enter description (markdown)",
+		m.styles.EditorStyle,
 		inputs.WithMarkdown(descriptionWordwrapWidth))
 	descriptionInput.SetCharLimit(descriptionInputMaxSize)
 
-	scriptInput := inputs.NewTextAreaWrapper(scriptInputHeight, "Enter script")
+	scriptInput := inputs.NewTextAreaWrapper(
+		scriptInputHeight,
+		"Enter script",
+		m.styles.EditorStyle,
+	)
 
 	m.inputs = []inputs.Input{titleInput, descriptionInput, scriptInput}
 	m.focused = -1
@@ -301,9 +306,9 @@ func (m *commandEditor) View() string {
 // addCommonElements adds the title, help text, and input fields to the content
 func (m *commandEditor) addCommonElements(content *strings.Builder) {
 	// Add help text at the top
-	helpTextStyle := *m.styles.EditorStyle.HelpText
+	helpTextStyle := m.styles.EditorStyle.HelpText
 	if m.focused == -1 {
-		helpTextStyle = helpTextStyle.Bold(true).Foreground(lipgloss.Color("255"))
+		helpTextStyle = m.styles.EditorStyle.HelpTextFocused
 	}
 	var helpText string
 	if m.command.IsEditable() {

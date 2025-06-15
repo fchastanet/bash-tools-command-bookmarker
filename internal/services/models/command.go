@@ -29,6 +29,7 @@ type Command struct {
 	lintIssuesParsed     []map[string]any
 	ID                   resource.ID
 	Elapsed              int
+	FilterScore          int
 }
 
 type LintStatus string
@@ -58,6 +59,7 @@ func NewCommand(
 		Status:               CommandStatusImported,
 		CreationDatetime:     timestamp,
 		ModificationDatetime: time.Now(),
+		FilterScore:          0,
 	}
 }
 

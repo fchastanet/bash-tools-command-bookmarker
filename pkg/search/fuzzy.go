@@ -37,17 +37,3 @@ func FuzzyMatchScore(text, pattern string) int {
 
 	return score
 }
-
-// FuzzyMatchSubsequence checks if pattern is a subsequence of text
-// (characters appear in order but not necessarily adjacent)
-func FuzzyMatchSubsequence(text, pattern string) bool {
-	if pattern == "" {
-		return true
-	}
-	if text == "" {
-		return false
-	}
-
-	// Using the MatchNormalizedFold function to handle case insensitivity
-	return fuzzy.MatchNormalizedFold(pattern, text)
-}

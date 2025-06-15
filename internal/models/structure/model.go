@@ -3,8 +3,37 @@ package structure
 import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
+	"github.com/fchastanet/shell-command-bookmarker/internal/models/keys"
+	"github.com/fchastanet/shell-command-bookmarker/pkg/components/tabs"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/resource"
+	"github.com/fchastanet/shell-command-bookmarker/pkg/sort"
+	"github.com/fchastanet/shell-command-bookmarker/pkg/tui/table"
 )
+
+// alter how all messages are handled.
+type Mode int
+
+const (
+	NormalMode Mode = iota // default
+	PromptMode             // confirm prompt is visible and taking input
+)
+
+type ChangeModeMsg struct {
+	NewMode Mode
+}
+
+type KeyMaps struct {
+	Sort              *sort.KeyMap
+	Filter            *tabs.FilterKeyMap
+	Global            *keys.GlobalKeyMap
+	Pane              *keys.PaneNavigationKeyMap
+	TableNavigation   *table.Navigation
+	TableAction       *table.Action
+	TableCustomAction *keys.TableCustomActionKeyMap
+	Editor            *keys.EditorKeyMap
+	Form              *huh.KeyMap
+}
 
 type ChildModel interface {
 	Init() tea.Cmd

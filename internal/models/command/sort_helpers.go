@@ -13,9 +13,11 @@ import (
 func compareBySortField(i, j *models.Command, field structure.Field) int {
 	switch field {
 	case structure.FieldID:
-		return sort.CompareInt(i.GetID(), j.GetID())
+		return sort.CompareID(i, j)
 	case structure.FieldTitle:
 		return strings.Compare(i.Title, j.Title)
+	case structure.FieldFilterScore:
+		return sort.CompareInt(i.FilterScore, j.FilterScore)
 	case structure.FieldScript:
 		return strings.Compare(i.Script, j.Script)
 	case structure.FieldStatus:

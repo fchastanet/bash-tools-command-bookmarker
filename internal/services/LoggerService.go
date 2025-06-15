@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"reflect"
+	"runtime/debug"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/davecgh/go-spew/spew"
@@ -18,9 +20,9 @@ type LoggerService struct {
 	debug           bool
 }
 
-func NewLoggerService(debug bool) *LoggerService {
+func NewLoggerService(debugMode bool) *LoggerService {
 	return &LoggerService{
-		debug:           debug,
+		debug:           debugMode,
 		logFileHandler:  nil,
 		dumpFileHandler: nil,
 	}
@@ -61,19 +63,60 @@ func (s *LoggerService) LogTeaMsg(msg tea.Msg) {
 
 // EnhancedLogTeaMsg provides detailed logging of tea messages, with special handling for key events
 func (s *LoggerService) EnhancedLogTeaMsg(msg tea.Msg) {
+	// Add a recover function to catch panics during logging
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("Panic during message logging",
+				"error", r,
+				"stack", debug.Stack())
+		}
+	}()
+
+	// Before using spew.Dump on an interface value, check if it's valid
+	if msg == nil {
+		slog.Warn("Attempted to log nil message")
+		return
+	}
+
+	// Use type assertions to check specific problematic types
+	switch v := msg.(type) {
+	case error:
+		// Handle error type safely
+		slog.Debug("Message is an error", "error", v.Error())
+	default:
+		// For other types, use a safer logging approach
+		slog.Debug("Tea message",
+			"type", reflect.TypeOf(msg).String(),
+			"value", fmt.Sprintf("%+v", msg))
+
+		// Only use spew.Dump if you really need the detailed output
+		// and consider wrapping it in a safe logging function
+		s.safeDump(msg)
+	}
+}
+
+// Add a helper method to safely dump values
+func (s *LoggerService) safeDump(v any) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("Panic during value dump",
+				"error", r,
+				"valueType", reflect.TypeOf(v))
+		}
+	}()
+
+	// Optional: Check if the value is a pointer and if it's nil
+	if reflect.ValueOf(v).Kind() == reflect.Ptr && reflect.ValueOf(v).IsNil() {
+		slog.Debug("Attempted to dump nil pointer")
+		return
+	}
+
 	if s.dumpFileHandler == nil {
+		slog.Warn("Dump file handler is not initialized, skipping dump")
 		return
 	}
-
-	// Special handling for key messages to make debugging easier
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		fmt.Fprintf(s.dumpFileHandler, "KeyMsg: Type=%v, Runes=%v, String=%q\n",
-			keyMsg.Type, keyMsg.Runes, keyMsg.String())
-		return
-	}
-
-	// For all other message types, use spew for detailed dumps
-	spew.Fdump(s.dumpFileHandler, msg)
+	// Now safely use spew.Dump
+	spew.Fdump(s.dumpFileHandler, v)
 }
 
 func (s *LoggerService) Close() error {

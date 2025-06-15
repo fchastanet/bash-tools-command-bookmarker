@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/resource"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/tui"
 	"github.com/stretchr/testify/assert"
@@ -35,6 +36,60 @@ func (*Cache) Get(resource.ID) EditorInterface {
 	return nil
 }
 
+type tableStyle struct{}
+
+func (*tableStyle) GetTableBorderStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
+func (*tableStyle) GetTableFiltersBlockStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
+func (*tableStyle) GetTableCellStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
+func (*tableStyle) GetTableRowStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
+func (*tableStyle) GetTableCurrentRowStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
+func (*tableStyle) GetTableSelectedRowStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
+func (*tableStyle) GetTableCurrentAndSelectedRowStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
+func (*tableStyle) GetTableCellEditedStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
+func (*tableStyle) GetTableScrollbarStyle() *tui.ScrollbarStyle {
+	return &tui.ScrollbarStyle{} //nolint:exhaustruct //test
+}
+
+func (*tableStyle) GetTableHeaderHeight() int {
+	return 0
+}
+
+func (*tableStyle) GetTableFilterHeight() int {
+	return 0
+}
+
+func (*tableStyle) GetTableHeaderStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
+func (*tableStyle) GetTableHeaderCellStyle() *lipgloss.Style {
+	return &lipgloss.Style{}
+}
+
 // setupTest sets up a table test with several rows. Each row is, keyed with an
 // int, and the row item is an int corresponding to the key, for ease of
 // testing. The rows are sorted from lowest int to highest int.
@@ -47,9 +102,11 @@ func setupTest() Model[*testResource] {
 		return cellContent
 	}
 	editorCache := &Cache{}
+
 	tbl := New(
 		editorCache,
-		GetDefaultStyle(tui.GetDefaultScrollbarStyle()), nil,
+		&tableStyle{},
+		nil,
 		renderer, cellRenderer, headerCellRenderer, 0, 0,
 		WithSortFunc(func(i, j *testResource) int {
 			if i.n < j.n {

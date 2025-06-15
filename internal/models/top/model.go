@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
-	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fchastanet/shell-command-bookmarker/internal/models"
 	"github.com/fchastanet/shell-command-bookmarker/internal/models/keys"
@@ -21,20 +19,9 @@ import (
 	"github.com/fchastanet/shell-command-bookmarker/internal/models/top/header"
 	"github.com/fchastanet/shell-command-bookmarker/internal/models/top/help"
 	"github.com/fchastanet/shell-command-bookmarker/internal/services"
-	dbmodels "github.com/fchastanet/shell-command-bookmarker/internal/services/models"
 	"github.com/fchastanet/shell-command-bookmarker/internal/version"
-	"github.com/fchastanet/shell-command-bookmarker/pkg/components/tabs"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/sort"
 	"github.com/fchastanet/shell-command-bookmarker/pkg/tui"
-	"github.com/fchastanet/shell-command-bookmarker/pkg/tui/table"
-)
-
-// alter how all messages are handled.
-type mode int
-
-const (
-	normalMode mode = iota // default
-	promptMode             // confirm prompt is visible and taking input
 )
 
 const OutputFileMode = 0o600
@@ -67,18 +54,6 @@ const (
 // MessageClearTickMsg represents a tick to check if messages should be cleared
 type MessageClearTickMsg struct{}
 
-type KeyMaps struct {
-	sort              *sort.KeyMap
-	filter            *tabs.FilterKeyMap
-	global            *keys.GlobalKeyMap
-	pane              *keys.PaneNavigationKeyMap
-	tableNavigation   *table.Navigation
-	tableAction       *table.Action
-	tableCustomAction *keys.TableCustomActionKeyMap
-	editor            *keys.EditorKeyMap
-	form              *huh.KeyMap
-}
-
 type Model struct {
 	// Time when the current message should be cleared
 	messageClearTime time.Time
@@ -86,22 +61,19 @@ type Model struct {
 	*models.PaneManager
 	appService *services.AppService
 	styles     *styles.Styles
-	keyMaps    *KeyMaps
+	keyMaps    *structure.KeyMaps
 
 	prompt *tui.YesNoPromptMsg
 
 	spinner *spinner.Model
 
-	selectedCommand  *dbmodels.Command
-	currentSortState *sort.State[*dbmodels.Command, string]
-
-	footerModel footer.Model
-	headerModel header.Model
-	helpModel   help.Model
+	footerModel *footer.Model
+	headerModel *header.Model
+	helpModel   *help.Model
 
 	width  int
 	height int
-	mode   mode
+	mode   structure.Mode
 
 	// Whether the spinner is currently active
 	spinning bool
@@ -121,16 +93,16 @@ func NewModel(
 	// https://github.com/charmbracelet/bubbletea/issues/1036#issuecomment-2158563056
 	_ = lipgloss.HasDarkBackground()
 
-	keyMaps := &KeyMaps{
-		editor:            keys.GetDefaultEditorKeyMap(),
-		sort:              sort.GetDefaultKeyMap(),
-		filter:            keys.GetFilterKeyMap(),
-		global:            keys.GetGlobalKeyMap(),
-		pane:              keys.GetPaneNavigationKeyMap(),
-		tableNavigation:   keys.GetTableNavigationKeyMap(),
-		tableAction:       keys.GetTableActionKeyMap(),
-		tableCustomAction: keys.GetTableCustomActionKeyMap(),
-		form:              keys.GetFormKeyMap(),
+	keyMaps := &structure.KeyMaps{
+		Editor:            keys.GetDefaultEditorKeyMap(),
+		Sort:              sort.GetDefaultKeyMap(),
+		Filter:            keys.GetFilterKeyMap(),
+		Global:            keys.GetGlobalKeyMap(),
+		Pane:              keys.GetPaneNavigationKeyMap(),
+		TableNavigation:   keys.GetTableNavigationKeyMap(),
+		TableAction:       keys.GetTableActionKeyMap(),
+		TableCustomAction: keys.GetTableCustomActionKeyMap(),
+		Form:              keys.GetFormKeyMap(),
 	}
 
 	spinnerObj := spinner.New(spinner.WithSpinner(spinner.Line))
@@ -139,7 +111,6 @@ func NewModel(
 	versionWidget := myStyles.FooterStyle.Version.Render(version.Get())
 
 	// Create help and footer components
-	helpModel := help.New(myStyles)
 	footerModel := footer.New(myStyles, helpWidget, versionWidget)
 
 	// Create header component with application name
@@ -148,27 +119,27 @@ func NewModel(
 	m := Model{
 		PaneManager: models.NewPaneManager(
 			myStyles,
-			keyMaps.global,
-			keyMaps.pane,
+			keyMaps.Global,
+			keyMaps.Pane,
 		),
 		spinner:           &spinnerObj,
 		appService:        appService.Self(),
 		styles:            myStyles,
 		keyMaps:           keyMaps,
-		helpModel:         helpModel,
-		footerModel:       footerModel,
-		headerModel:       headerModel,
+		helpModel:         nil,
+		footerModel:       &footerModel,
+		headerModel:       &headerModel,
 		width:             0,
 		height:            0,
-		mode:              normalMode,
+		mode:              structure.NormalMode,
 		spinning:          false,
 		prompt:            nil,
 		messageClearTime:  time.Time{},
 		perfMonitorActive: false,
 		quitting:          false,
-		selectedCommand:   nil,
-		currentSortState:  nil,
 	}
+	helpModel := help.New(myStyles, keyMaps, appService, &m)
+	m.helpModel = &helpModel
 	makers := NewMakerFactory(m.PaneManager, appService, myStyles, &spinnerObj, keyMaps)
 	m.SetMakerFactory(makers)
 	return m
@@ -176,6 +147,7 @@ func NewModel(
 
 func (m *Model) Init() tea.Cmd {
 	return models.SafeCmd(tea.Batch(
+		m.helpModel.Init(),
 		m.PaneManager.Init(),
 	))
 }
@@ -194,15 +166,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if cmd, cmdHandled := m.handleCommandMsg(msg); cmdHandled {
 		return m, cmd
 	}
+	var cmds []tea.Cmd
 
-	m.handleSortCommandMsg(msg)
+	cmds = append(cmds, m.helpModel.Update(msg))
+	cmds = append(cmds, m.dispatchMessage(msg)...)
 
-	cmd := m.dispatchMessage(msg)
-	return m, cmd
+	return m, tea.Batch(cmds...)
 }
 
+//nolint:cyclop // not really complex
 func (m *Model) handleCommandMsg(msg tea.Msg) (tea.Cmd, bool) {
+	var cmds []tea.Cmd
 	switch msg := msg.(type) {
+	case structure.ChangeModeMsg:
+		cmds = append(cmds, m.sendWindowSizeMsg()...)
+	case tui.ResizeMsg[*help.Model]:
+		cmds = append(cmds, m.sendWindowSizeMsg()...)
 	case QuitClearScreenMsg:
 		return m.handleQuitClearScreenMsg(), true
 	case spinner.TickMsg:
@@ -222,26 +201,11 @@ func (m *Model) handleCommandMsg(msg tea.Msg) (tea.Cmd, bool) {
 	case structure.CommandSelectedForShellMsg:
 		return m.handleCommandSelectedForShellMsg(msg), true
 	}
-	return nil, false
+	return tea.Batch(cmds...), false
 }
 
-func (m *Model) handleSortCommandMsg(msg tea.Msg) {
-	switch msg := msg.(type) {
-	case sort.Msg[*dbmodels.Command, string]:
-		m.currentSortState = msg.State
-		m.updateHelpBindings()
-	case sort.MsgSortEditModeChanged[*dbmodels.Command, string]:
-		m.currentSortState = msg.State
-		m.updateHelpBindings()
-	}
-}
-
-func (m *Model) dispatchMessage(msg tea.Msg) tea.Cmd {
-	if rowMsg, ok := msg.(table.RowSelectedActionMsg[*dbmodels.Command]); ok {
-		m.handleSelectedCommand(rowMsg)
-	}
-
-	if m.prompt != nil && m.mode == promptMode {
+func (m *Model) dispatchMessage(msg tea.Msg) []tea.Cmd {
+	if m.prompt != nil && m.mode == structure.PromptMode {
 		return m.handlePromptMode(msg)
 	}
 
@@ -249,12 +213,7 @@ func (m *Model) dispatchMessage(msg tea.Msg) tea.Cmd {
 		return m.handleKeyMsg(keyMsg)
 	}
 
-	return m.PaneManager.Update(msg)
-}
-
-func (m *Model) handleSelectedCommand(msg table.RowSelectedActionMsg[*dbmodels.Command]) {
-	m.selectedCommand = msg.Row
-	m.updateHelpBindings()
+	return []tea.Cmd{m.PaneManager.Update(msg)}
 }
 
 func (m *Model) handleQuitClearScreenMsg() tea.Cmd {
@@ -262,27 +221,30 @@ func (m *Model) handleQuitClearScreenMsg() tea.Cmd {
 	return tea.Quit
 }
 
-func (m *Model) handlePromptMode(msg tea.Msg) tea.Cmd {
-	gKeys := m.keyMaps.global
+func (m *Model) handlePromptMode(msg tea.Msg) []tea.Cmd {
+	gKeys := m.keyMaps.Global
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		if key.Matches(keyMsg, *gKeys.Help) && gKeys.Help.Enabled() {
-			m.displayHelp()
-			return nil
+		if tui.CheckKey(keyMsg, gKeys.Help) {
+			return m.displayHelp()
 		}
 	}
-	cmd := m.prompt.Update(msg)
+	var cmds []tea.Cmd
+	cmds = append(cmds, m.prompt.Update(msg))
 	if m.prompt.IsCompleted() {
 		// If the prompt was completed, just reset the prompt
-		m.mode = normalMode
+		m.mode = structure.NormalMode
 		m.prompt = nil
-		m.updateHelpBindings()
-		// Send out message to panes to resize themselves to remove room for the prompt
-		m.PaneManager.Update(tea.WindowSizeMsg{
-			Height: m.viewHeight(),
-			Width:  m.viewWidth(),
-		})
+		cmds = append(
+			cmds,
+			func() tea.Msg {
+				return structure.ChangeModeMsg{
+					NewMode: m.mode,
+				}
+			},
+		)
 	}
-	return cmd
+
+	return cmds
 }
 
 func (m *Model) handleCommandSelectedForShellMsg(msg structure.CommandSelectedForShellMsg) tea.Cmd {
@@ -297,15 +259,9 @@ func (m *Model) handleCommandSelectedForShellMsg(msg structure.CommandSelectedFo
 
 // handleFocusPaneChangedMsg handles the pane focus change message
 func (m *Model) handleFocusPaneChangedMsg(msg tea.Msg) tea.Cmd {
-	m.updateHelpBindings()
-	// Send message to panes to resize themselves to make room for the prompt above it.
-	slog.Debug("handleWindowSize", "viewHeight", m.viewHeight())
-	_ = m.PaneManager.Update(tea.WindowSizeMsg{
-		Height: m.viewHeight(),
-		Width:  m.viewWidth(),
-	})
-
-	return m.PaneManager.Update(msg)
+	cmds := m.sendWindowSizeMsg()
+	cmds = append(cmds, m.PaneManager.Update(msg))
+	return tea.Batch(cmds...)
 }
 
 // handlePerformanceMessages handles performance monitoring related messages
@@ -377,14 +333,8 @@ func scheduleClearMessage(d time.Duration) tea.Cmd {
 func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) tea.Cmd {
 	m.width = msg.Width
 	m.height = msg.Height
-	m.helpModel.SetWidth(m.width)
-	m.footerModel.SetWidth(m.width)
-	m.headerModel.SetWidth(m.width) // Set the header width
-	slog.Debug("handleWindowSize", "viewHeight", m.viewHeight())
-	return m.PaneManager.Update(tea.WindowSizeMsg{
-		Height: m.viewHeight(),
-		Width:  m.viewWidth(),
-	})
+	cmds := m.sendWindowSizeMsg()
+	return tea.Batch(cmds...)
 }
 
 // handleBlink processes cursor blink messages
@@ -402,19 +352,16 @@ func (m *Model) handleMemoryStats(msg tui.MemoryStatsMsg) tea.Cmd {
 }
 
 // handleKeyMsg processes key messages
-func (m *Model) handleKeyMsg(msg tea.KeyMsg) tea.Cmd {
+func (m *Model) handleKeyMsg(msg tea.KeyMsg) []tea.Cmd {
 	switch m.mode {
-	case promptMode:
+	case structure.PromptMode:
 		// already handled in Update method above
-	case normalMode:
+	case structure.NormalMode:
 		cmd := m.PaneManager.Update(msg)
 		if cmd != nil {
-			return cmd
+			return []tea.Cmd{cmd}
 		}
-		// If still normal mode, we let manageKey handle the key message.
-		if m.mode == normalMode {
-			return m.manageKey(msg)
-		}
+		return m.manageKey(msg)
 	}
 
 	return nil
@@ -422,40 +369,54 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) tea.Cmd {
 
 func (m *Model) handleYesNoPrompt(promptMsg tui.YesNoPromptMsg) tea.Cmd {
 	var cmds []tea.Cmd
-	m.mode = promptMode
+	m.mode = structure.PromptMode
 	m.prompt = &promptMsg
 
-	cmds = append(cmds, m.prompt.Init())
-	m.updateHelpBindings()
+	cmds = append(cmds,
+		m.prompt.Init(),
+		func() tea.Msg {
+			return structure.ChangeModeMsg{
+				NewMode: m.mode,
+			}
+		},
+	)
+	cmds = append(cmds, m.sendWindowSizeMsg()...)
+
+	return tea.Batch(cmds...)
+}
+
+func (m *Model) sendWindowSizeMsg() []tea.Cmd {
 	// Send out message to panes to resize themselves to make room for the prompt above it.
 	windowSizeMsg := tea.WindowSizeMsg{
 		Height: m.viewHeight(),
 		Width:  m.viewWidth(),
 	}
-	cmds = append(
-		cmds,
-		m.prompt.Update(windowSizeMsg),
-		m.PaneManager.Update(windowSizeMsg),
-	)
-	return tea.Batch(cmds...)
+	m.footerModel.SetWidth(m.width)
+	m.headerModel.SetWidth(m.width) // Set the header width
+	var cmds []tea.Cmd
+	cmds = append(cmds, m.helpModel.Update(windowSizeMsg))
+	if m.prompt != nil {
+		cmds = append(cmds, m.prompt.Update(windowSizeMsg))
+	}
+	cmds = append(cmds, m.PaneManager.Update(windowSizeMsg))
+	return cmds
 }
 
-//nolint:cyclop // not really complex
-func (m *Model) manageKey(msg tea.KeyMsg) tea.Cmd {
-	globalKeys := m.keyMaps.global
+func (m *Model) manageKey(msg tea.KeyMsg) []tea.Cmd {
+	globalKeys := m.keyMaps.Global
 	switch {
-	case key.Matches(msg, *globalKeys.Quit) && globalKeys.Quit.Enabled():
-		return m.handleQuit()
-	case key.Matches(msg, *globalKeys.Help) && globalKeys.Help.Enabled():
-		m.displayHelp()
-	case key.Matches(msg, *globalKeys.Debug) && globalKeys.Debug.Enabled():
+	case tui.CheckKey(msg, globalKeys.Quit):
+		return []tea.Cmd{m.handleQuit()}
+	case tui.CheckKey(msg, globalKeys.Help):
+		return m.displayHelp()
+	case tui.CheckKey(msg, globalKeys.Debug):
 		// ctrl+d shows memory stats for debugging performance
 		if m.perfMonitorActive {
-			return tui.StopPerformanceMonitor()
+			return []tea.Cmd{tui.StopPerformanceMonitor()}
 		}
-		return tui.StartPerformanceMonitor(performanceMonitorInterval)
-	case key.Matches(msg, *globalKeys.Search) && globalKeys.Search.Enabled():
-		return models.NavigateTo(structure.SearchKind, structure.WithPosition(structure.LeftPane))
+		return []tea.Cmd{tui.StartPerformanceMonitor(performanceMonitorInterval)}
+	case tui.CheckKey(msg, globalKeys.Search):
+		return []tea.Cmd{models.NavigateTo(structure.SearchKind, structure.WithPosition(structure.LeftPane))}
 	default:
 	}
 	return nil
@@ -474,22 +435,18 @@ func (m *Model) handleQuit() tea.Cmd {
 		keys.GetFormKeyMap(),
 		func() tea.Cmd {
 			m.quitting = true
-			m.mode = normalMode
-			return QuitWithClearScreen()
+			m.mode = structure.NormalMode
+			return tea.Batch(
+				QuitWithClearScreen(),
+			)
 		},
 	)
 }
 
-func (m *Model) displayHelp() {
-	// '?' toggles help widget
-	m.helpModel.Toggle()
-	m.updateHelpBindings()
+func (m *Model) displayHelp() []tea.Cmd {
 	// Help widget takes up space so update panes' dimensions
 	slog.Debug("handleHelpToggle", "viewHeight", m.viewHeight())
-	m.PaneManager.Update(tea.WindowSizeMsg{
-		Height: m.viewHeight(),
-		Width:  m.viewWidth(),
-	})
+	return m.sendWindowSizeMsg()
 }
 
 func (m *Model) View() string {
@@ -505,7 +462,7 @@ func (m *Model) View() string {
 	components = append(components, m.headerModel.View())
 
 	// Add prompt if in prompt mode.
-	if m.mode == promptMode {
+	if m.mode == structure.PromptMode {
 		components = append(components, m.prompt.View())
 	}
 	// Add panes
@@ -526,45 +483,6 @@ func (m *Model) View() string {
 	return strings.Join(components, "\n")
 }
 
-// updateHelpBindings updates the key bindings displayed in help based on current mode
-func (m *Model) updateHelpBindings() {
-	// Clear previous binding sets
-	m.helpModel.ClearBindingSets()
-	switch m.mode {
-	case promptMode:
-		// For prompt mode, just use a single set
-		m.helpModel.AddBindingSet("Prompt Controls", keys.GetFormBindings())
-	case normalMode:
-		// For normal mode, organize bindings into logical groups
-		if m.currentSortState != nil {
-			sort.UpdateBindings(m.currentSortState.KeyMap, m.currentSortState)
-		}
-		if m.currentSortState != nil && m.currentSortState.IsEditActive {
-			m.helpModel.AddBindingSet("Sort Controls", keys.KeyMapToSlice(*m.currentSortState.KeyMap))
-		}
-		m.helpModel.AddBindingSet("Global", keys.KeyMapToSlice(*m.keyMaps.global))
-		m.helpModel.AddBindingSet("Pane Navigation", m.HelpBindings())
-		if m.FocusedPosition() == structure.TopPane && !m.currentSortState.IsEditActive {
-			m.helpModel.AddBindingSet("Filter Controls", keys.KeyMapToSlice(*m.keyMaps.filter))
-			m.helpModel.AddBindingSet("Table Nav", keys.KeyMapToSlice(*m.keyMaps.tableNavigation))
-			keys.UpdateBindings(
-				m.keyMaps.tableAction,
-				m.keyMaps.tableCustomAction,
-				m.appService.IsShellSelectionMode(),
-				m.selectedCommand,
-			)
-
-			tableCustomActions := keys.KeyMapToSlice(*m.keyMaps.tableCustomAction)
-			if !m.currentSortState.IsEditActive {
-				tableCustomActions = append(tableCustomActions, m.currentSortState.KeyMap.Sort)
-			}
-
-			m.helpModel.AddBindingSet("Table Actions", keys.KeyMapToSlice(*m.keyMaps.tableAction))
-			m.helpModel.AddBindingSet("Command Actions", tableCustomActions)
-		}
-	}
-}
-
 // contentHeight returns the height available to the panes
 func (m *Model) viewHeight() int {
 	slog.Debug("viewHeight", "height", m.height)
@@ -578,7 +496,7 @@ func (m *Model) viewHeight() int {
 	vh -= m.footerModel.Height()
 
 	// Subtract prompt height if in prompt mode
-	if m.mode == promptMode {
+	if m.mode == structure.PromptMode {
 		vh -= lipgloss.Height(m.prompt.View())
 	}
 
